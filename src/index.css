@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+.aref-ruqaa-regular {
+  font-family: "Aref Ruqaa", serif;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.scheherazade-new-regular {
+  font-family: "Scheherazade New", serif;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.scheherazade-new-semibold {
+  font-family: "Scheherazade New", serif;
+  font-weight: 600;
+  font-style: normal;
+}

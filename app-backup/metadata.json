@@ -1,0 +1,7 @@
+{
+  "name": "Islamic Fawāʾid OCR Knowledge Manager",
+  "description": "A professional tool for capturing, organizing, and reviewing Islamic knowledge notes (fawāʾid) from book images using AI-powered OCR.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
