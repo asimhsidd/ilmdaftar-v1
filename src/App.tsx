@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
+  Calendar,
   Library,
   PlusCircle,
   RefreshCw,
@@ -31,6 +32,7 @@ import SearchPage from './components/SearchPage';
 import ReviewMode from './components/ReviewMode';
 import ImportExport from './components/ImportExport';
 import Capture from './components/Capture';
+import StudyPlanner from './components/StudyPlanner';
 
 function AppContent() {
   const { showModal } = useModal();
@@ -75,6 +77,8 @@ function AppContent() {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'study-planner':
+        return <StudyPlanner />;
       case 'dashboard':
       case 'explorer':
         return <Dashboard sciences={sciences} stats={stats} onNavigate={setActiveTab} onUpdate={fetchInitialData} />;
@@ -166,6 +170,13 @@ function AppContent() {
             onClick={() => {}}
             isCollapsed={isSidebarCollapsed}
             comingSoon={true}
+          />
+          <NavItem
+            icon={<Calendar className="w-5 h-5" />}
+            label="Study Planner"
+            active={activeTab === 'study-planner'}
+            onClick={() => setActiveTab('study-planner')}
+            isCollapsed={isSidebarCollapsed}
           />
           <NavItem
             icon={<ArrowLeftRight className="w-5 h-5" />}

@@ -70,3 +70,43 @@ export interface Stats {
   totalFawaid: number;
   scienceStats: { name: string; count: number }[];
 }
+
+export type PlanMode = 'fixed-pace' | 'fixed-deadline' | 'phased';
+
+export interface PlanPhase {
+  id: string;
+  pagesPerDay: number;
+  startDate: string;
+  endDate: string;
+}
+
+export interface ReadingProgress {
+  date: string;
+  pagesRead: number;
+  currentPageNumber: number;
+}
+
+export interface BookPlan {
+  id: string;
+  bookTitle: string;
+  totalPages: number;
+  startDate: string;
+  includeInRevision: boolean;
+  mode: PlanMode;
+  
+  fixedPagesPerDay: number;
+  targetEndDate?: string;
+  phases: PlanPhase[];
+  
+  progress: ReadingProgress[];
+  currentPageNumber: number;
+  collapsed: boolean;
+}
+
+export interface StudyPlan {
+  id: string;
+  name: string;
+  startDate: string;
+  targetEndDate?: string;
+  books: BookPlan[];
+}

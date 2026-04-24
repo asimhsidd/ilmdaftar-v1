@@ -3,6 +3,7 @@ import { Search, Copy, Loader2, Trash2, Edit2, GraduationCap, BookOpen, Library,
 import { Fawaid, Science, Book, Sharh, Stats } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSettings } from '../contexts/SettingsContext';
+import { useModal } from '../contexts/ModalContext';
 
 export default function SearchPage({
   sciences,
@@ -30,6 +31,7 @@ export default function SearchPage({
   const [editShuruuh, setEditShuruuh] = useState<Sharh[]>([]);
   const [editingScienceId, setEditingScienceId] = useState('');
   const { t, language } = useSettings();
+  const { showModal } = useModal();
   
   const [filters, setFilters] = useState(() => {
     const saved = localStorage.getItem('fawaid_search_filters');

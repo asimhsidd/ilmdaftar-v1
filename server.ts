@@ -555,6 +555,53 @@ async function startServer() {
 
   const PORT = 3000;
 
+  app.post("/api/shamela-search", async (req, res) => {
+    try {
+      const { query } = req.body;
+      if (!query) return res.status(400).json({ error: "Missing query" });
+
+      const normalizedQuery = normalizeArabic(query);
+      
+      // Attempt to hit the shamela.ws search page
+      // Shamela often uses a specific route for search or an API. 
+      // If server-rendered:
+      const searchUrl = `https://shamela.ws/search?q=${encodeURIComponent(normalizedQuery)}`;
+      const response = await fetch(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      
+      const html = await response.text();
+      
+      // Basic regex extraction for SSR
+      // Note: If Shamela is an SPA, this might need headless browser or finding the direct API.
+      // This is the structure expected by the frontend
+      const results = [];
+      const resultRegex = /<div class="result-item">.*?<h3.*?>(.*?)<\/h3>.*?<span class="author">(.*?)<\/span>.*?<div class="snippet">(.*?)<\/div>/gs;
+      
+      let match;
+      let count = 0;
+      while ((match = resultRegex.exec(html)) !== null && count < 20) {
+        results.push({
+          title: match[1].replace(/<[^>]+>/g, '').trim(),
+          book_name: match[1].replace(/<[^>]+>/g, '').trim(),
+          author: match[2].replace(/<[^>]+>/g, '').trim(),
+          snippet: match[3].replace(/<[^>]+>/g, '').trim(),
+          page_number: null,
+          link_to_result: searchUrl
+        });
+        count++;
+      }
+
+      // If regex finds none, return an empty array and frontend falls back
+      res.json({ results });
+    } catch (error) {
+      console.error("Shamela search error:", error);
+      res.status(500).json({ error: "Failed to scrape Shamela" });
+    }
+  });
+
   // API Routes
   app.get("/api/search/semantic", async (req, res) => {
     const { search, bookId, tag, scienceId, author, language, mode } = req.query;

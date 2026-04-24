@@ -20,6 +20,7 @@ import { Science, Book as BookType, Sharh } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSettings } from '../contexts/SettingsContext';
 import NewItemModal from './NewItemModal';
+import ShamelaMatch from './shamela/ShamelaMatch';
 
 import { performOCR, suggestTitleAndTags, translateContent } from '../services/geminiService';
 
@@ -911,6 +912,22 @@ export default function Capture({
                 dir="auto"
               />
             </div>
+            
+            {formData.content && (
+              <ShamelaMatch 
+                content={formData.content} 
+                onMatchConfirm={(metadata) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    author: metadata.author || prev.author,
+                    pageNumber: metadata.page_number || prev.pageNumber,
+                    // If book is found, you might want to find it in the DB and set bookId,
+                    // but for now setting the title in extra_notes or attempting to map
+                    extra_notes: `${prev.extra_notes ? prev.extra_notes + '\n\n' : ''}Source matched via Shamela: ${metadata.book_name} - URL: ${metadata.source_url}`
+                  }));
+                }} 
+              />
+            )}
 
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider text-[#8E8E8E] dark:text-gray-500">{t('Extra Notes')} ({t('Optional')})</label>

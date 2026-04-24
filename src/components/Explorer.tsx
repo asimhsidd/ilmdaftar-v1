@@ -38,6 +38,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import Capture from './Capture';
 
 export default function Explorer({ sciences, onUpdate }: { sciences: Science[], onUpdate?: () => void | Promise<void> }) {
+  const { showModal } = useModal();
   const [view, setView] = useState<'sciences' | 'books' | 'fawaid'>(() => {
     const saved = localStorage.getItem('fawaid_explorer_view') as any;
     return (saved === 'shuruuh' ? 'fawaid' : saved) || 'sciences';
