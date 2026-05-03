@@ -21,14 +21,17 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Tags,
-  Code
+  Code,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Science, Stats } from './types';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { ModalProvider, useModal } from './contexts/ModalContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 // Components
+import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import SearchPage from './components/SearchPage';
 import ReviewMode from './components/ReviewMode';
@@ -56,6 +59,7 @@ function AppContent() {
     return localStorage.getItem('fawaid_dev_mode') === 'true';
   });
   const { theme, setTheme, language, setLanguage, t, apiKey, setApiKey, titleFont, bodyFont, textScale, setTitleFont, setBodyFont, setTextScale } = useSettings();
+  const { signOut } = useAuth();
 
   useEffect(() => {
     localStorage.setItem('fawaid_activeTab', activeTab);
@@ -309,6 +313,18 @@ function AppContent() {
 
           {/* Settings Toggles */}
           <div className={`flex ${isSidebarCollapsed ? 'flex-col' : ''} gap-2`}>
+            <button 
+              onClick={() => signOut()}
+              className={`flex-1 flex items-center justify-center gap-2 p-2 rounded-lg bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-all text-sm font-medium group relative`}
+            >
+              <LogOut className="w-4 h-4 flex-shrink-0" />
+              {!isSidebarCollapsed && <span>{t('Sign Out')}</span>}
+              {isSidebarCollapsed && (
+                <div className="absolute left-full ml-4 px-2 py-1 bg-zinc-800 text-white text-xs rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+                  {t('Sign Out')}
+                </div>
+              )}
+            </button>
             <button 
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
               className={`flex-1 flex items-center justify-center gap-2 p-2 rounded-lg bg-[#F5F5F7] dark:bg-zinc-800 hover:bg-[#E5E7EB] dark:hover:bg-zinc-700 transition-all text-sm font-medium group relative`}
@@ -626,12 +642,32 @@ function MobileTabItem({ icon, label, active, onClick, comingSoon }: { icon: any
   );
 }
 
+function AuthWrapper() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#F5F5F7] dark:bg-black">
+        <div className="w-8 h-8 border-4 border-[#18407B] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
+
+  return <AppContent />;
+}
+
 export default function App() {
   return (
-    <SettingsProvider>
-      <ModalProvider>
-        <AppContent />
-      </ModalProvider>
-    </SettingsProvider>
+    <AuthProvider>
+      <SettingsProvider>
+        <ModalProvider>
+          <AuthWrapper />
+        </ModalProvider>
+      </SettingsProvider>
+    </AuthProvider>
   );
 }
