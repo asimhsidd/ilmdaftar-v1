@@ -19,7 +19,9 @@ import {
   Eye,
   EyeOff,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Tags,
+  Code
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Science, Stats } from './types';
@@ -32,7 +34,7 @@ import SearchPage from './components/SearchPage';
 import ReviewMode from './components/ReviewMode';
 import ImportExport from './components/ImportExport';
 import Capture from './components/Capture';
-import StudyPlanner from './components/StudyPlanner';
+import TagBrowser from './components/TagBrowser';
 
 function AppContent() {
   const { showModal } = useModal();
@@ -48,7 +50,12 @@ function AppContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('fawaid_sidebarCollapsed') === 'true';
   });
-  const { theme, setTheme, language, setLanguage, t, apiKey, setApiKey } = useSettings();
+  const [showAppearanceSettings, setShowAppearanceSettings] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [devMode, setDevMode] = useState(() => {
+    return localStorage.getItem('fawaid_dev_mode') === 'true';
+  });
+  const { theme, setTheme, language, setLanguage, t, apiKey, setApiKey, titleFont, bodyFont, textScale, setTitleFont, setBodyFont, setTextScale } = useSettings();
 
   useEffect(() => {
     localStorage.setItem('fawaid_activeTab', activeTab);
@@ -75,48 +82,92 @@ function AppContent() {
     fetchInitialData();
   }, []);
 
+  useEffect(() => {
+    const lastReminderAt = Number(localStorage.getItem('fawaid_last_backup_reminder_at') || '0');
+    const reminderEveryMs = 3 * 24 * 60 * 60 * 1000;
+    if (Date.now() - lastReminderAt < reminderEveryMs) return;
+
+    localStorage.setItem('fawaid_last_backup_reminder_at', String(Date.now()));
+    showModal({
+      type: 'confirm',
+      title: 'Backup Reminder',
+      message: 'It has been a few days since your last reminder. Would you like to open Import / Export to create a backup now?',
+      confirmText: 'Open Backup',
+      cancelText: 'Later'
+    }).then((result) => {
+      if (result === 'confirm') {
+        setActiveTab('import-export');
+      }
+    });
+  }, [showModal]);
+
+  const openNeedsFormattingInbox = () => {
+    localStorage.setItem('fawaid_open_explorer', 'true');
+    localStorage.setItem('fawaid_explorer_quick_capture_inbox', 'true');
+    setActiveTab('dashboard');
+  };
+
   const renderContent = () => {
     switch (activeTab) {
-      case 'study-planner':
-        return <StudyPlanner />;
       case 'dashboard':
       case 'explorer':
-        return <Dashboard sciences={sciences} stats={stats} onNavigate={setActiveTab} onUpdate={fetchInitialData} />;
+        return <Dashboard sciences={sciences} stats={stats} onNavigate={setActiveTab} onUpdate={fetchInitialData} onOpenNeedsFormatting={openNeedsFormattingInbox} />;
       case 'search':
         return (
           <div className="relative h-full">
             <div className="absolute inset-0 opacity-10 pointer-events-none">
-              <Dashboard sciences={sciences} stats={stats} onNavigate={setActiveTab} onUpdate={fetchInitialData} />
+              <Dashboard sciences={sciences} stats={stats} onNavigate={setActiveTab} onUpdate={fetchInitialData} onOpenNeedsFormatting={openNeedsFormattingInbox} />
             </div>
-            <div className="relative z-10 h-full overflow-y-auto bg-white/90 dark:bg-black/90 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-[#E5E5E0] dark:border-zinc-800">
+            <div className="relative z-10 h-full overflow-y-auto bg-white/90 dark:bg-black/90 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-[#E5E7EB] dark:border-zinc-800">
               <SearchPage sciences={sciences} stats={stats} onNavigate={setActiveTab} onUpdate={fetchInitialData} />
             </div>
           </div>
         );
       case 'capture':
         return (
-          <div className="flex flex-col h-full bg-[#F5F5F0] dark:bg-black p-8 overflow-y-auto">
-            <Capture sciences={sciences} onSave={() => setActiveTab('search')} />
+          <div className="flex flex-col h-full bg-[#F5F5F7] dark:bg-black p-4 md:p-8 overflow-y-auto">
+            <Capture sciences={sciences} onSave={() => { fetchInitialData(); setActiveTab('dashboard'); }} />
           </div>
         );
       case 'review':
-        return <Dashboard sciences={sciences} stats={stats} onNavigate={setActiveTab} onUpdate={fetchInitialData} />;
+        return <Dashboard sciences={sciences} stats={stats} onNavigate={setActiveTab} onUpdate={fetchInitialData} onOpenNeedsFormatting={openNeedsFormattingInbox} />;
       case 'import-export':
         return <ImportExport sciences={sciences} onUpdate={fetchInitialData} />;
+      case 'tags':
+        return (
+          <div className="h-full overflow-y-auto bg-white/90 dark:bg-black/90 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-[#E5E7EB] dark:border-zinc-800">
+            <TagBrowser
+              onTagClick={(tag) => {
+                localStorage.setItem('fawaid_search_tag', tag);
+                localStorage.setItem('fawaid_search_query', '');
+                setActiveTab('search');
+              }}
+            />
+          </div>
+        );
       default:
         return <Dashboard sciences={sciences} stats={stats} onNavigate={setActiveTab} onUpdate={fetchInitialData} />;
     }
   };
 
   return (
-    <div className="flex h-screen bg-[#F5F5F0] dark:bg-black text-[#1A1A1A] dark:text-white font-sans transition-colors duration-300">
-      {/* Sidebar */}
-      <aside className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-white dark:bg-zinc-900 border-r border-[#E5E5E0] dark:border-zinc-800 flex flex-col transition-all duration-300 relative z-20`}>
-        <div className={`p-6 border-b border-[#E5E5E0] dark:border-zinc-800 flex flex-col justify-center ${isSidebarCollapsed ? 'items-center px-2' : ''}`}>
-          <div className="flex justify-between items-center w-full">
-            <h1 className={`text-3xl tracking-tight flex items-center gap-2 dark:text-white ${isSidebarCollapsed ? 'justify-center mx-auto' : ''}`}>
-              {!isSidebarCollapsed && (
-                <span style={{ fontFamily: '"Montserrat", sans-serif', fontWeight: 850 }}>
+    <div className="flex h-screen bg-[#F5F5F7] dark:bg-black text-[#1A1A1A] dark:text-white font-sans transition-colors duration-300">
+      {/* Sidebar — hidden on mobile */}
+      <aside className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-white dark:bg-zinc-900 border-r border-[#E5E7EB] dark:border-zinc-800 hidden md:flex flex-col transition-all duration-300 relative z-20`}>
+        <div className={`p-6 border-b border-[#E5E7EB] dark:border-zinc-800 flex flex-col justify-center ${isSidebarCollapsed ? 'items-center px-2' : ''}`}>
+          <div className="flex justify-between items-center w-full gap-6">
+            <h1 className={`text-2xl tracking-tight flex items-center gap-2 dark:text-white ${isSidebarCollapsed ? 'justify-center w-full' : ''}`}>
+              {isSidebarCollapsed ? (
+                <button 
+                  onClick={() => setIsSidebarCollapsed(false)}
+                  title={t('Expand Sidebar')}
+                  className="flex justify-center items-center w-full transition-transform hover:scale-105"
+                >
+                  <img src="/logo.png" alt="Logo" className="w-10 h-10 rounded object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
+                </button>
+              ) : (
+                <span className="flex items-center gap-2" style={{ fontFamily: '"Montserrat", sans-serif', fontWeight: 800 }}>
+                  <img src="/logo.png" alt="Logo" className="w-10 h-10 rounded object-contain translate-x-[4px] -translate-y-[2px]" onError={(e) => e.currentTarget.style.display = 'none'} />
                   'IlmDaftar
                 </span>
               )}
@@ -124,28 +175,15 @@ function AppContent() {
             {!isSidebarCollapsed && (
               <button 
                 onClick={() => setIsSidebarCollapsed(true)} 
-                className="text-[#8E8E8E] hover:text-[#5A5A40] dark:hover:text-white transition-colors"
+                className="text-[#8E8E8E] hover:text-[#18407B] dark:hover:text-white transition-colors"
                 title={t('Collapse Sidebar')}
               >
                 <PanelLeftClose className="w-5 h-5" />
               </button>
             )}
           </div>
-          {!isSidebarCollapsed && (
-            <div className={`mt-0 flex flex-col ${language === 'ar' ? 'aref-ruqaa-regular text-lg' : 'text-xs italic'}`}>
-              <p className="text-[#8E8E8E] dark:text-gray-500 truncate">{t('ilm_daftar_desc_1')}</p>
-              <p className="text-[#8E8E8E] dark:text-gray-500 truncate">{t('ilm_daftar_desc_2')}</p>
-            </div>
-          )}
-          {isSidebarCollapsed && (
-            <button 
-              onClick={() => setIsSidebarCollapsed(false)} 
-              className="text-[#8E8E8E] hover:text-[#5A5A40] dark:hover:text-white transition-colors mt-4"
-              title={t('Expand Sidebar')}
-            >
-              <PanelLeftOpen className="w-5 h-5 flex-shrink-0" />
-            </button>
-          )}
+
+
         </div>
 
         <nav className={`flex-1 overflow-y-auto space-y-1 ${isSidebarCollapsed ? 'p-2' : 'p-4'}`}>
@@ -167,15 +205,15 @@ function AppContent() {
             icon={<RefreshCw className="w-5 h-5" />}
             label={t('Review Mode')}
             active={activeTab === 'review'}
-            onClick={() => {}}
+            onClick={() => setActiveTab('review')}
             isCollapsed={isSidebarCollapsed}
-            comingSoon={true}
+            comingSoon={!devMode}
           />
           <NavItem
-            icon={<Calendar className="w-5 h-5" />}
-            label="Study Planner"
-            active={activeTab === 'study-planner'}
-            onClick={() => setActiveTab('study-planner')}
+            icon={<Tags className="w-5 h-5" />}
+            label={t('Tags')}
+            active={activeTab === 'tags'}
+            onClick={() => setActiveTab('tags')}
             isCollapsed={isSidebarCollapsed}
           />
           <NavItem
@@ -187,53 +225,10 @@ function AppContent() {
           />
         </nav>
 
-        <div className={`border-t border-[#E5E5E0] dark:border-zinc-800 space-y-4 ${isSidebarCollapsed ? 'p-2' : 'p-4'}`}>
-          
-          <button 
-            onClick={async () => {
-              const res = await showModal({
-                type: 'confirm',
-                title: 'Undo Last Import',
-                message: 'Are you sure you want to undo the most recent import? This action is permanent.',
-                confirmText: 'Undo Import',
-                cancelText: 'Cancel'
-              });
-              if (res === 'confirm') {
-                try {
-                   const fetchRes = await fetch('/api/import/undo', { method: 'DELETE' });
-                   const data = await fetchRes.json();
-                   if (data.success) {
-                     await showModal({
-                       type: 'alert',
-                       title: 'Undo Successful',
-                       message: `Removed ${data.deletedCount} items.`
-                     });
-                     window.location.reload();
-                   } else {
-                     await showModal({
-                       type: 'alert',
-                       title: 'Undo Failed',
-                       message: data.error || 'Failed to undo import.'
-                     });
-                   }
-                } catch(e) {
-                   await showModal({
-                     type: 'alert',
-                     title: 'Error',
-                     message: 'Network or connection error while undoing the import.'
-                   });
-                }
-              }
-            }}
-            className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors'}`}
-            title="Undo Last Import"
-          >
-            <RefreshCw className="w-5 h-5 text-red-500" />
-            {!isSidebarCollapsed && 'Undo Last Import'}
-          </button>
+        <div className={`border-t border-[#E5E7EB] dark:border-zinc-800 space-y-4 ${isSidebarCollapsed ? 'p-2' : 'p-4'}`}>
 
           {/* API Key Settings */}
-          <div className={`bg-[#F5F5F0] dark:bg-zinc-800 rounded-xl transition-colors relative group ${isSidebarCollapsed ? 'p-2 flex justify-center' : 'p-3'}`}>
+          <div className={`bg-[#F5F5F7] dark:bg-zinc-800 rounded-xl transition-colors relative group ${isSidebarCollapsed ? 'p-2 flex justify-center' : 'p-3'}`}>
             <button
               onClick={() => {
                 if (isSidebarCollapsed) {
@@ -246,7 +241,7 @@ function AppContent() {
               }}
               className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} text-sm font-medium`}
             >
-              <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-2'} text-[#5A5A40] dark:text-zinc-400 relative`}>
+              <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-2'} text-[#18407B] dark:text-zinc-400 relative`}>
                 <Key className="w-4 h-4 flex-shrink-0" />
                 {!isSidebarCollapsed && <span>{t('API Key')}</span>}
                 {isSidebarCollapsed && apiKey && (
@@ -278,12 +273,12 @@ function AppContent() {
                     value={apiKeyInput}
                     onChange={e => setApiKeyInput(e.target.value)}
                     placeholder={t('Enter API Key')}
-                    className="w-full bg-white dark:bg-zinc-700 border border-[#E5E5E0] dark:border-zinc-600 rounded-lg px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-500"
+                    className="w-full bg-white dark:bg-zinc-700 border border-[#E5E7EB] dark:border-zinc-600 rounded-lg px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-500"
                   />
                   <button
                     type="button"
                     onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[#8E8E8E] hover:text-[#5A5A40]"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[#8E8E8E] hover:text-[#18407B]"
                   >
                     {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -295,7 +290,7 @@ function AppContent() {
                       setApiKeySaved(true);
                       setTimeout(() => setApiKeySaved(false), 2000);
                     }}
-                    className="flex-1 bg-[#5A5A40] dark:bg-zinc-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-[#4A4A30] dark:hover:bg-zinc-500 transition-all"
+                    className="flex-1 bg-[#6197EC] dark:bg-zinc-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-[#4C81D9] dark:hover:bg-zinc-500 transition-all"
                   >
                     {apiKeySaved ? t('API Key Saved') : t('Save')}
                   </button>
@@ -303,7 +298,7 @@ function AppContent() {
                     href="https://aistudio.google.com/app/apikey"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 px-3 py-2 bg-white dark:bg-zinc-700 border border-[#E5E5E0] dark:border-zinc-600 rounded-lg text-xs font-medium text-[#5A5A40] dark:text-zinc-300 hover:bg-[#F5F5F0] dark:hover:bg-zinc-600 transition-all"
+                    className="flex items-center gap-1 px-3 py-2 bg-white dark:bg-zinc-700 border border-[#E5E7EB] dark:border-zinc-600 rounded-lg text-xs font-medium text-[#18407B] dark:text-zinc-300 hover:bg-[#F5F5F7] dark:hover:bg-zinc-600 transition-all"
                   >
                     {t('Get API Key')} <ExternalLink className="w-3 h-3" />
                   </a>
@@ -316,7 +311,7 @@ function AppContent() {
           <div className={`flex ${isSidebarCollapsed ? 'flex-col' : ''} gap-2`}>
             <button 
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              className={`flex-1 flex items-center justify-center gap-2 p-2 rounded-lg bg-[#F5F5F0] dark:bg-zinc-800 hover:bg-[#E5E5E0] dark:hover:bg-zinc-700 transition-all text-sm font-medium group relative`}
+              className={`flex-1 flex items-center justify-center gap-2 p-2 rounded-lg bg-[#F5F5F7] dark:bg-zinc-800 hover:bg-[#E5E7EB] dark:hover:bg-zinc-700 transition-all text-sm font-medium group relative`}
             >
               {theme === 'light' ? <Moon className="w-4 h-4 flex-shrink-0" /> : <Sun className="w-4 h-4 flex-shrink-0" />}
               {!isSidebarCollapsed && <span>{theme === 'light' ? t('Dark Mode') : t('Light Mode')}</span>}
@@ -327,24 +322,195 @@ function AppContent() {
               )}
             </button>
             <button 
-              onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
-              className={`flex items-center justify-center p-2 rounded-lg bg-[#F5F5F0] dark:bg-zinc-800 hover:bg-[#E5E5E0] dark:hover:bg-zinc-700 transition-all relative group ${isSidebarCollapsed ? 'w-full' : ''}`}
+              onClick={() => {
+                const langs: ('en' | 'ar' | 'ur')[] = ['en', 'ar', 'ur'];
+                const next = langs[(langs.indexOf(language) + 1) % langs.length];
+                setLanguage(next);
+              }}
+              className={`flex items-center justify-center p-2 rounded-lg bg-[#F5F5F7] dark:bg-zinc-800 hover:bg-[#E5E7EB] dark:hover:bg-zinc-700 transition-all relative group ${isSidebarCollapsed ? 'w-full' : ''}`}
             >
               <Languages className="w-4 h-4 flex-shrink-0" />
-              {!isSidebarCollapsed && <span className="ml-1 text-xs font-bold">{language === 'en' ? t('Arabic') : t('English')}</span>}
+              {!isSidebarCollapsed && <span className="ml-1 text-xs font-bold">
+                {language === 'en' ? t('Arabic') : language === 'ar' ? t('Urdu') : t('English')}
+              </span>}
               {isSidebarCollapsed && (
                 <div className="absolute left-full ml-4 px-2 py-1 bg-zinc-800 text-white text-xs rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
-                  {language === 'en' ? t('Arabic') : t('English')}
+                  {language === 'en' ? t('Arabic') : language === 'ar' ? t('Urdu') : t('English')}
                 </div>
               )}
+            </button>
+            <button
+              onClick={() => setShowAppearanceSettings(true)}
+              className={`flex items-center justify-center p-2 rounded-lg bg-[#F5F5F7] dark:bg-zinc-800 hover:bg-[#E5E7EB] dark:hover:bg-zinc-700 transition-all relative group ${isSidebarCollapsed ? 'w-full' : ''}`}
+              title={t('Appearance Settings')}
+            >
+              <Settings className="w-4 h-4 flex-shrink-0" />
+              <div className="absolute left-full ml-4 px-2 py-1 bg-zinc-800 text-white text-xs rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+                {t('Appearance')}
+              </div>
             </button>
           </div>
         </div>
       </aside>
 
+      <AnimatePresence>
+        {showAppearanceSettings && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowAppearanceSettings(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-zinc-900 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto border border-[#E5E7EB] dark:border-zinc-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-serif font-bold mb-2 dark:text-white">{t('Appearance Settings')}</h3>
+              <p className="text-xs text-[#8E8E8E] dark:text-gray-500 mb-4">Customize fonts and text size.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-[#8E8E8E] dark:text-gray-400">Title Font</label>
+                  <select value={titleFont} onChange={(e) => setTitleFont(e.target.value as any)} className="w-full mt-1 bg-[#F5F5F7] dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm dark:text-white">
+                    <option value="aref">Aref Ruqaa</option>
+                    <option value="noto-naskh">Noto Naskh Arabic</option>
+                    <option value="scheherazade">Scheherazade New</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-[#8E8E8E] dark:text-gray-400">{t('Body Font')}</label>
+                  <select value={bodyFont} onChange={(e) => setBodyFont(e.target.value as any)} className="w-full mt-1 bg-[#F5F5F7] dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm dark:text-white">
+                    <option value="aref">Aref Ruqaa</option>
+                    <option value="noto-naskh">Noto Naskh Arabic</option>
+                    <option value="scheherazade">Scheherazade New</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-[#8E8E8E] dark:text-gray-400">Text Size</label>
+                  <select value={textScale} onChange={(e) => setTextScale(e.target.value as any)} className="w-full mt-1 bg-[#F5F5F7] dark:bg-zinc-800 rounded-lg px-3 py-2 text-sm dark:text-white">
+                    <option value="compact">Compact</option>
+                    <option value="comfortable">Comfortable</option>
+                    <option value="large">Large</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Mobile-only: Theme, Language, API Key */}
+              <div className="md:hidden mt-4 pt-4 border-t border-[#E5E7EB] dark:border-zinc-800 space-y-3">
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                    className="flex-1 flex items-center justify-center gap-2 p-2.5 rounded-lg bg-[#F5F5F7] dark:bg-zinc-800 hover:bg-[#E5E7EB] dark:hover:bg-zinc-700 transition-all text-sm font-medium"
+                  >
+                    {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                    <span>{theme === 'light' ? t('Dark Mode') : t('Light Mode')}</span>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const langs: ('en' | 'ar' | 'ur')[] = ['en', 'ar', 'ur'];
+                      const next = langs[(langs.indexOf(language) + 1) % langs.length];
+                      setLanguage(next);
+                    }}
+                    className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-lg bg-[#F5F5F7] dark:bg-zinc-800 hover:bg-[#E5E7EB] dark:hover:bg-zinc-700 transition-all"
+                  >
+                    <Languages className="w-4 h-4" />
+                    <span className="text-xs font-bold">
+                      {language === 'en' ? t('Arabic') : language === 'ar' ? t('Urdu') : t('English')}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="bg-[#F5F5F7] dark:bg-zinc-800 rounded-xl p-3">
+                  <label className="text-xs font-bold text-[#8E8E8E] dark:text-gray-400 mb-1.5 block">{t('API Key')}</label>
+                  <div className="relative">
+                    <input
+                      type={showApiKey ? 'text' : 'password'}
+                      value={apiKeyInput}
+                      onChange={e => setApiKeyInput(e.target.value)}
+                      placeholder={t('Enter API Key')}
+                      className="w-full bg-white dark:bg-zinc-700 border border-[#E5E7EB] dark:border-zinc-600 rounded-lg px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[#8E8E8E] hover:text-[#18407B]"
+                    >
+                      {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => {
+                        setApiKey(apiKeyInput);
+                        setApiKeySaved(true);
+                        setTimeout(() => setApiKeySaved(false), 2000);
+                      }}
+                      className="flex-1 bg-[#6197EC] dark:bg-zinc-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-[#4C81D9] dark:hover:bg-zinc-500 transition-all"
+                    >
+                      {apiKeySaved ? t('API Key Saved') : t('Save')}
+                    </button>
+                    <a
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 px-3 py-2 bg-white dark:bg-zinc-700 border border-[#E5E7EB] dark:border-zinc-600 rounded-lg text-xs font-medium text-[#18407B] dark:text-zinc-300 hover:bg-[#F5F5F7] dark:hover:bg-zinc-600 transition-all"
+                    >
+                      {t('Get API Key')} <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-[#E5E7EB] dark:border-zinc-800 flex justify-between items-center">
+                <button
+                  onClick={async () => {
+                    if (devMode) {
+                      setDevMode(false);
+                      localStorage.removeItem('fawaid_dev_mode');
+                      await showModal({ type: 'alert', title: t('Developer Settings'), message: 'Developer mode disabled.' });
+                      return;
+                    }
+                    const answer = prompt(t('Enter Developer Password'));
+                    if (answer === 'blastdeveloper') {
+                      setDevMode(true);
+                      localStorage.setItem('fawaid_dev_mode', 'true');
+                      await showModal({ type: 'alert', title: t('Developer Settings'), message: t('Developer Mode Unlocked') });
+                    } else if (answer !== null) {
+                      await showModal({ type: 'alert', title: t('Developer Settings'), message: t('Incorrect Password') });
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${devMode ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-[#F5F5F7] dark:bg-zinc-800 text-[#8E8E8E] hover:bg-[#E5E7EB] dark:hover:bg-zinc-700'}`}
+                >
+                  <Code className="w-4 h-4" />
+                  {devMode ? t('Developer Mode Active') : t('Developer Settings')}
+                </button>
+                <button
+                  onClick={() => setShowAppearanceSettings(false)}
+                  className="px-4 py-2 bg-[#6197EC] text-white rounded-lg text-sm font-bold"
+                >
+                  {t('Close')}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative flex flex-col">
-        <div className="max-w-5xl mx-auto p-8 flex-1 w-full">
+      <main className="flex-1 overflow-y-auto relative flex flex-col pb-16 md:pb-0">
+        <div className="max-w-5xl mx-auto p-4 md:p-6 lg:p-8 flex-1 w-full">
+          {/* Global Mobile Logo */}
+          <div className="md:hidden flex justify-center w-full pb-6">
+            <h1 className="text-2xl tracking-tight flex items-center gap-2 dark:text-white">
+              <span className="flex items-center gap-2" style={{ fontFamily: '"Montserrat", sans-serif', fontWeight: 800 }}>
+                <img src="/logo.png" alt="Logo" className="w-10 h-10 rounded object-contain translate-x-[4px] -translate-y-[2px]" onError={(e) => e.currentTarget.style.display = 'none'} />
+                'IlmDaftar
+              </span>
+            </h1>
+          </div>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -358,7 +524,7 @@ function AppContent() {
           </AnimatePresence>
         </div>
         
-        <footer className="w-full text-center py-4 px-6 mt-auto border-t border-[#E5E5E0] dark:border-zinc-800">
+        <footer className="hidden md:block w-full text-center py-4 px-6 mt-auto border-t border-[#E5E7EB] dark:border-zinc-800">
           <p className="text-[10px] text-[#8E8E8E] dark:text-zinc-500 opacity-70">
             {t('This app is powered by Gemini, AI is not always reliable and can make mistakes')}
           </p>
@@ -374,6 +540,41 @@ function AppContent() {
           </button>
         </footer>
       </main>
+
+      {/* Mobile Bottom Tab Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white dark:bg-zinc-900 border-t border-[#E5E7EB] dark:border-zinc-800 flex items-center justify-around px-1" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <MobileTabItem
+          icon={<LayoutDashboard className="w-5 h-5" />}
+          label={t('Home')}
+          active={activeTab === 'dashboard' || activeTab === 'explorer' || activeTab === 'search'}
+          onClick={() => setActiveTab('dashboard')}
+        />
+        <MobileTabItem
+          icon={<PlusCircle className="w-5 h-5" />}
+          label={t('Add')}
+          active={activeTab === 'capture'}
+          onClick={() => setActiveTab('capture')}
+        />
+        <MobileTabItem
+          icon={<Tags className="w-5 h-5" />}
+          label={t('Tags')}
+          active={activeTab === 'tags'}
+          onClick={() => setActiveTab('tags')}
+        />
+        <MobileTabItem
+          icon={<RefreshCw className="w-5 h-5" />}
+          label={t('Review')}
+          active={activeTab === 'review'}
+          onClick={() => setActiveTab('review')}
+          comingSoon={!devMode}
+        />
+        <MobileTabItem
+          icon={<ArrowLeftRight className="w-5 h-5" />}
+          label={t('Backup')}
+          active={activeTab === 'import-export'}
+          onClick={() => setActiveTab('import-export')}
+        />
+      </nav>
     </div>
   );
 }
@@ -384,16 +585,17 @@ function NavItem({ icon, label, active, onClick, isCollapsed, comingSoon }: { ic
       onClick={comingSoon ? undefined : onClick}
       disabled={comingSoon}
       title={isCollapsed ? label : undefined}
+      style={active ? { backgroundColor: 'var(--brand-accent)', boxShadow: '0 8px 16px color-mix(in srgb, var(--brand-accent) 30%, transparent)' } : undefined}
       className={`relative w-full flex items-center ${isCollapsed ? 'justify-center p-3' : 'gap-3 px-4 py-3'} rounded-xl transition-all duration-200 group ${
         active 
-          ? 'bg-[#5A5A40] text-white shadow-lg shadow-[#5A5A40]/20 dark:bg-zinc-700 dark:shadow-none' 
-          : 'text-[#5A5A40] dark:text-zinc-400 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800'
-      } ${comingSoon ? 'opacity-50 cursor-not-allowed hidden lg:flex' : ''}`}
+          ? 'text-white dark:shadow-none' 
+          : 'text-[#18407B] dark:text-zinc-400 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800'
+      } ${comingSoon ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       <div className="flex-shrink-0">{icon}</div>
       {!isCollapsed && <span className="font-medium truncate">{label}</span>}
       {!isCollapsed && comingSoon && (
-        <span className="ml-auto text-[8px] font-bold uppercase tracking-wider bg-[#E5E5E0] dark:bg-zinc-700 text-[#8E8E8E] dark:text-zinc-300 px-1.5 py-0.5 rounded">
+        <span className="ml-auto text-[8px] font-bold uppercase tracking-wider bg-[#E5E7EB] dark:bg-zinc-700 text-[#8E8E8E] dark:text-zinc-300 px-1.5 py-0.5 rounded">
           Soon
         </span>
       )}
@@ -403,6 +605,23 @@ function NavItem({ icon, label, active, onClick, isCollapsed, comingSoon }: { ic
           {label} {comingSoon && '(Soon)'}
         </div>
       )}
+    </button>
+  );
+}
+
+function MobileTabItem({ icon, label, active, onClick, comingSoon }: { icon: any, label: string, active: boolean, onClick: () => void, comingSoon?: boolean }) {
+  return (
+    <button
+      onClick={comingSoon ? undefined : onClick}
+      disabled={comingSoon}
+      className={`flex flex-col items-center justify-center py-2 px-1 min-w-0 flex-1 transition-colors relative ${
+        active 
+          ? 'text-[#18407B] dark:text-white' 
+          : 'text-[#8E8E8E] dark:text-zinc-500'
+      } ${comingSoon ? 'opacity-50 cursor-not-allowed' : ''}`}
+    >
+      <div className="flex-shrink-0">{icon}</div>
+      <span className="text-[10px] font-medium mt-0.5 truncate w-full text-center">{label}</span>
     </button>
   );
 }

@@ -13,16 +13,32 @@ import {
   Image as ImageIcon,
   MessageSquare,
   Wand2,
-  Languages
+  Languages,
+  Search,
+  RefreshCw
 } from 'lucide-react';
 import { useModal } from '../contexts/ModalContext';
 import { Science, Book as BookType, Sharh } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSettings } from '../contexts/SettingsContext';
 import NewItemModal from './NewItemModal';
-import ShamelaMatch from './shamela/ShamelaMatch';
+import ShamelaMatch, { ParsedReference } from './shamela/ShamelaMatch';
 
-import { performOCR, suggestTitleAndTags, translateContent } from '../services/geminiService';
+import { performOCR, suggestTitleAndTags, translateContent, categorizeBook, splitMasroohAndSharh } from '../services/geminiService';
+
+const normalizeName = (name: string) => {
+  if (!name) return '';
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[\u064B-\u065F]/g, '')
+    .replace(/[أإآء]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[^\u0600-\u06FF\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
 
 const getExplorerTaxonomyPrefill = () => {
   try {
@@ -70,6 +86,16 @@ interface CaptureProps {
   prefilledScience?: Science;
   prefilledBook?: BookType;
   prefilledSharh?: Sharh | null;
+  prefilledDraft?: Partial<{
+    title: string;
+    content: string;
+    extra_notes: string;
+    pageNumber: string;
+    volumeNumber: string;
+    tabah: string;
+    tags: string[];
+  }>;
+  editingFawaidId?: number | null;
   isModal?: boolean;
   onCancel?: () => void;
 }
@@ -80,11 +106,14 @@ export default function Capture({
   prefilledScience,
   prefilledBook,
   prefilledSharh,
+  prefilledDraft,
+  editingFawaidId,
   isModal = false,
   onCancel
 }: CaptureProps) {
   const { showModal } = useModal();
-  const [mode, setMode] = useState<'ocr' | 'manual'>('ocr');
+  const [mode, setMode] = useState<'ocr' | 'manual'>(() => (isModal && !!prefilledDraft ? 'manual' : 'ocr'));
+  const devMode = typeof window !== 'undefined' && localStorage.getItem('fawaid_dev_mode') === 'true';
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState<{
@@ -178,14 +207,13 @@ export default function Capture({
         scienceId: String(prefilledScience.id),
         bookId: String(prefilledBook.id),
         sharhId: prefilledSharh && prefilledSharh.id !== -1 ? String(prefilledSharh.id) : '',
-        author: '',
-        volumeNumber: '',
-        pageNumber: '',
-        tabah: '',
-        title: '',
-        content: '',
-        extra_notes: '',
-        tags: [] as string[]
+        volumeNumber: prefilledDraft?.volumeNumber || '',
+        pageNumber: prefilledDraft?.pageNumber || '',
+        tabah: prefilledDraft?.tabah || '',
+        title: prefilledDraft?.title || '',
+        content: prefilledDraft?.content || '',
+        extra_notes: prefilledDraft?.extra_notes || '',
+        tags: prefilledDraft?.tags || [] as string[]
       };
     }
 
@@ -194,7 +222,6 @@ export default function Capture({
       scienceId: '',
       bookId: '',
       sharhId: '',
-      author: '',
       volumeNumber: '',
       pageNumber: '',
       tabah: '',
@@ -246,6 +273,9 @@ export default function Capture({
 
   const [books, setBooks] = useState<BookType[]>([]);
   const [shuruuh, setShuruuh] = useState<Sharh[]>([]);
+  const autoFilledBookRef = useRef<BookType | null>(null);
+  const autoFilledSharhRef = useRef<Sharh | null>(null);
+  const [localSciences, setLocalSciences] = useState<Science[]>(sciences);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { t, apiKey, language } = useSettings();
@@ -257,6 +287,8 @@ export default function Capture({
   const [newSharhAuthor, setNewSharhAuthor] = useState('');
   const [tabahs, setTabahs] = useState<string[]>([]);
   const [authors, setAuthors] = useState<string[]>([]);
+  const [quickCaptureMode, setQuickCaptureMode] = useState(false);
+  const [isShamelaOpen, setIsShamelaOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/tabahs')
@@ -271,14 +303,23 @@ export default function Capture({
   }, []);
 
   useEffect(() => {
+    setLocalSciences(sciences);
+  }, [sciences]);
+
+  useEffect(() => {
     if (formData.scienceId) {
       fetch(`/api/books?scienceId=${formData.scienceId}`)
         .then(res => res.json())
         .then((data: BookType[]) => {
-          setBooks(data);
+          const preservedBook = autoFilledBookRef.current;
+          const mergedBooks = preservedBook && !data.some(book => book.id === preservedBook.id)
+            ? [...data, preservedBook]
+            : data;
+
+          setBooks(mergedBooks);
           setFormData(prev => {
             if (!prev.bookId) return prev;
-            const hasSelectedBook = data.some(book => book.id === parseInt(prev.bookId));
+            const hasSelectedBook = mergedBooks.some(book => book.id === parseInt(prev.bookId));
             if (hasSelectedBook) return prev;
             return {
               ...prev,
@@ -305,10 +346,15 @@ export default function Capture({
       fetch(`/api/shuruuh?bookId=${formData.bookId}`)
         .then(res => res.json())
         .then((data: Sharh[]) => {
-          setShuruuh(data);
+          const preservedSharh = autoFilledSharhRef.current;
+          const mergedShuruuh = preservedSharh && !data.some(sharh => sharh.id === preservedSharh.id)
+            ? [...data, preservedSharh]
+            : data;
+
+          setShuruuh(mergedShuruuh);
           setFormData(prev => {
             if (!prev.sharhId) return prev;
-            const hasSelectedSharh = data.some(sharh => sharh.id === parseInt(prev.sharhId));
+            const hasSelectedSharh = mergedShuruuh.some(sharh => sharh.id === parseInt(prev.sharhId));
             if (hasSelectedSharh) return prev;
             return {
               ...prev,
@@ -331,6 +377,18 @@ export default function Capture({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Clear form before OCR
+      setFormData(prev => ({
+        ...prev,
+        volumeNumber: '',
+        pageNumber: '',
+        tabah: '',
+        title: '',
+        content: '',
+        extra_notes: '',
+        tags: []
+      }));
+      setOcrResult(null);
       const reader = new FileReader();
       reader.onloadend = () => {
         setImage(reader.result as string);
@@ -364,7 +422,99 @@ export default function Capture({
     }
   };
 
+  const handleAutoFillMetadata = async () => {
+    if (!formData.content) {
+      await showModal({ type: 'alert', title: t('Error'), message: t('Please enter Fāʾidah text first.') });
+      return;
+    }
+    if (!apiKey) {
+      await showModal({ type: 'alert', title: t('Error'), message: t('API Key Required') });
+      return;
+    }
+    setIsGeneratingMetadata(true);
+    try {
+      // 1. Get basic suggestions (Title & Tags)
+      const suggestions = await suggestTitleAndTags(formData.content, apiKey);
+      let finalTitle = suggestions.suggestedTitle || formData.title;
+      let finalTags = [...new Set([...(formData.tags || []), ...(suggestions.suggestedTags || [])])];
+
+      // 2. Split Masrooh and Sharh if applicable
+      const splitResult = await splitMasroohAndSharh(finalTitle, '', apiKey);
+      const bookTitleCandidate = splitResult.masroohBookName;
+      const sharhTitleCandidate = splitResult.sharhTitle;
+
+      // 3. Categorize Book (find science and author)
+      const categorization = await categorizeBook(bookTitleCandidate, '', localSciences, apiKey);
+      
+      let targetScienceId = categorization.matchedScienceId;
+      if (!targetScienceId && categorization.newScienceName) {
+        targetScienceId = await handleAutoCreateScience(categorization.newScienceName);
+      }
+
+      if (targetScienceId) {
+        setFormData(prev => ({ ...prev, scienceId: String(targetScienceId) }));
+        
+        // Fetch books for this science to check existence
+        const booksRes = await fetch(`/api/books?scienceId=${targetScienceId}`);
+        const existingBooks: BookType[] = await booksRes.json();
+        
+        let targetBook = existingBooks.find(b => normalizeName(b.title) === normalizeName(bookTitleCandidate));
+        
+        if (!targetBook) {
+          // Create book with AI suggested author if available (categorizeBook doesn't return author yet, let's assume it might in future or we prompt)
+          // For now, if book doesn't exist, we might need to prompt for author or try to guess it.
+          // Let's just create it and user can edit author later, or we can improve categorizeBook to return author.
+          const res = await fetch('/api/books', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              science_id: targetScienceId, 
+              title: bookTitleCandidate,
+              author: categorization.suggestedAuthor || '' 
+            })
+          });
+          if (res.ok) targetBook = await res.json();
+        }
+
+        if (targetBook) {
+          setFormData(prev => ({ ...prev, bookId: String(targetBook?.id) }));
+          
+          if (sharhTitleCandidate) {
+            const shuruuhRes = await fetch(`/api/shuruuh?bookId=${targetBook.id}`);
+            const existingShuruuh: Sharh[] = await shuruuhRes.json();
+            let targetSharh = existingShuruuh.find(s => normalizeName(s.title) === normalizeName(sharhTitleCandidate));
+            
+            if (!targetSharh) {
+              const res = await fetch('/api/shuruuh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ book_id: targetBook.id, title: sharhTitleCandidate })
+              });
+              if (res.ok) targetSharh = await res.json();
+            }
+            if (targetSharh) {
+              setFormData(prev => ({ ...prev, sharhId: String(targetSharh?.id) }));
+            }
+          }
+        }
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        title: finalTitle,
+        tags: finalTags
+      }));
+
+    } catch (e) {
+      console.error(e);
+      await showModal({ type: 'alert', title: t('Error'), message: t('Failed to generate suggestions.') });
+    } finally {
+      setIsGeneratingMetadata(false);
+    }
+  };
+
   const handleSuggestMetadata = async () => {
+    // Keep this for just Title & Tags if user wants minimal auto-fill
     if (!formData.content) {
       await showModal({ type: 'alert', title: t('Error'), message: t('Please enter Fāʾidah text first.') });
       return;
@@ -414,7 +564,7 @@ export default function Capture({
   };
 
   const handleSave = async (skipDuplicateCheck = false) => {
-    if (!formData.scienceId || !formData.bookId || !formData.content) {
+    if ((!quickCaptureMode && (!formData.scienceId || !formData.bookId)) || !formData.content) {
       await showModal({ type: 'alert', title: t('Error'), message: t('Fill Required Fields') });
       return;
     }
@@ -425,29 +575,36 @@ export default function Capture({
 
     setLoading(true);
     try {
-      // 2. Save Fawaid
-      await fetch('/api/fawaid', {
-        method: 'POST',
+      const payload = {
+        book_id: formData.bookId ? parseInt(formData.bookId) : null,
+        sharh_id: formData.sharhId ? parseInt(formData.sharhId) : null,
+        volume_number: formData.volumeNumber ? String(formData.volumeNumber) : null,
+        page_number: formData.pageNumber ? parseInt(formData.pageNumber) : null,
+        tabah: formData.tabah || null,
+        title: formData.title,
+        content: formData.content,
+        extra_notes: formData.extra_notes,
+        tags: quickCaptureMode ? [] : formData.tags,
+        language: language === 'ar' ? 'arabic' : 'english',
+        status: quickCaptureMode ? 'unformatted' : 'formatted'
+      };
+
+      const res = await fetch(editingFawaidId ? `/api/fawaid/${editingFawaidId}` : '/api/fawaid', {
+        method: editingFawaidId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          book_id: parseInt(formData.bookId),
-          sharh_id: formData.sharhId ? parseInt(formData.sharhId) : null,
-          volume_number: formData.volumeNumber ? String(formData.volumeNumber) : null,
-          page_number: formData.pageNumber ? parseInt(formData.pageNumber) : null,
-          tabah: formData.tabah || null,
-          title: formData.title,
-          content: formData.content,
-          extra_notes: formData.extra_notes,
-          tags: formData.tags,
-          author: formData.author,
-          language: language === 'ar' ? 'arabic' : 'english'
-        })
+        body: JSON.stringify(payload)
       });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || t('Error'));
+      }
 
       onSave();
       resetForm();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      await showModal({ type: 'alert', title: t('Error'), message: e.message || t('Error') });
     } finally {
       setLoading(false);
     }
@@ -477,8 +634,6 @@ export default function Capture({
     setOcrResult(null);
     setFormData({
       ...taxonomy,
-      author: '',
-      volumeNumber: '',
       pageNumber: '',
       tabah: '',
       title: '',
@@ -491,29 +646,100 @@ export default function Capture({
 
   const handleAddBook = async (data: { title: string, author?: string }) => {
     if (!formData.scienceId) return;
+    
+    const normalizeName = (name: string) => name.trim().toLowerCase();
+    
+    // Check for duplicate book (case-insensitive)
+    const existingDuplicate = books.find(
+      b => normalizeName(b.title) === normalizeName(data.title)
+    );
+    if (existingDuplicate) {
+      setFormData({...formData, bookId: existingDuplicate.id.toString()});
+      await showModal({ type: 'alert', title: t('Duplicate'), message: `Book "${data.title}" already exists.` });
+      setIsAddingBook(false);
+      return;
+    }
+    
     const res = await fetch('/api/books', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ science_id: parseInt(formData.scienceId), title: data.title, author: data.author })
+      body: JSON.stringify({ science_id: parseInt(formData.scienceId), title: data.title, author: data.author || undefined })
     });
     if (res.ok) {
       const newBook = await res.json();
       setBooks([...books, newBook]);
       setFormData({...formData, bookId: newBook.id.toString()});
+      setIsAddingBook(false);
     }
   };
 
   const handleAddSharh = async (data: { title: string, author?: string }) => {
     if (!formData.bookId) return;
+    
+    const normalizeName = (name: string) => name.trim().toLowerCase();
+    
+    // Check for duplicate sharh (case-insensitive)
+    const existingDuplicate = shuruuh.find(
+      s => normalizeName(s.title) === normalizeName(data.title)
+    );
+    if (existingDuplicate) {
+      setFormData({...formData, sharhId: existingDuplicate.id.toString()});
+      await showModal({ type: 'alert', title: t('Duplicate'), message: `Sharh "${data.title}" already exists.` });
+      setIsAddingSharh(false);
+      return;
+    }
+    
     const res = await fetch('/api/shuruuh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ book_id: parseInt(formData.bookId), title: data.title, author: data.author })
+      body: JSON.stringify({ book_id: parseInt(formData.bookId), title: data.title, author: data.author || undefined })
     });
     if (res.ok) {
       const newSharh = await res.json();
       setShuruuh([...shuruuh, newSharh]);
       setFormData({...formData, sharhId: newSharh.id.toString()});
+      setIsAddingSharh(false);
+    }
+  };
+
+  const handleAutoCreateScience = async (suggestedScienceName: string) => {
+    const normalizeName = (name: string) => name.trim().toLowerCase();
+    
+    // Check for duplicate science (case-insensitive)
+    const existingDuplicate = localSciences.find(
+      s => normalizeName(s.name) === normalizeName(suggestedScienceName)
+    );
+    if (existingDuplicate) {
+      return existingDuplicate.id;
+    }
+    
+    const shouldCreate = await showModal({
+      type: 'confirm',
+      title: t('Create New Science'),
+      message: `No matching science found. Create new science: "${suggestedScienceName}"?`,
+      confirmText: t('Create'),
+      cancelText: t('Cancel')
+    });
+
+    if (shouldCreate !== 'confirm') return null;
+
+    try {
+      const res = await fetch('/api/sciences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: suggestedScienceName })
+      });
+      if (!res.ok) throw new Error('Failed to create science');
+      const newScience = await res.json();
+      
+      // Add to local sciences list so it's available in dropdown
+      setLocalSciences(prev => [...prev, newScience]);
+      
+      return newScience.id;
+    } catch (e) {
+      console.error(e);
+      await showModal({ type: 'alert', title: t('Error'), message: t('Failed to create science') });
+      return null;
     }
   };
 
@@ -542,7 +768,7 @@ export default function Capture({
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
             >
               <h3 className="text-2xl font-serif font-bold mb-4 dark:text-white">{t('Add Sharh')}</h3>
               
@@ -554,7 +780,7 @@ export default function Capture({
                     value={newSharhTitle}
                     onChange={(e) => setNewSharhTitle(e.target.value)}
                     placeholder={t('Enter Sharh Name')}
-                    className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleAddSharhSubmit();
@@ -575,7 +801,7 @@ export default function Capture({
                     value={newSharhAuthor}
                     onChange={(e) => setNewSharhAuthor(e.target.value)}
                     placeholder={t('Author Name')}
-                    className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleAddSharhSubmit();
                       if (e.key === 'Escape') {
@@ -598,14 +824,14 @@ export default function Capture({
                     setNewSharhTitle('');
                     setNewSharhAuthor('');
                   }}
-                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
                 >
                   {t('Cancel')}
                 </button>
                 <button
                   onClick={handleAddSharhSubmit}
                   disabled={!newSharhTitle.trim()}
-                  className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('Save')}
                 </button>
@@ -619,12 +845,23 @@ export default function Capture({
         <div>
           <h2 className="text-3xl font-serif font-bold text-[#1A1A1A] dark:text-white">{t('Add Fāʾidah')}</h2>
           {isModal && prefilledBook && (
-            <p className="text-[#5A5A40] dark:text-zinc-400 mt-1 aref-ruqaa-regular inline-block px-4 py-1 bg-[#F5F5F0] dark:bg-zinc-800 rounded-full mt-3">
+            <p className="text-[#18407B] dark:text-zinc-400 mt-1 aref-ruqaa-regular inline-block px-4 py-1 bg-[#F5F5F7] dark:bg-zinc-800 rounded-full mt-3">
               {prefilledScience?.name} → {prefilledBook.title}
               {prefilledSharh && prefilledSharh.id !== -1 && ` → ${prefilledSharh.title}`}
             </p>
           )}
           {!isModal && <p className="text-[#8E8E8E] dark:text-gray-400 mt-2">{t('Capture Description')}</p>}
+          {!isModal && (
+            <label className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#18407B] dark:text-zinc-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={quickCaptureMode}
+                onChange={(e) => setQuickCaptureMode(e.target.checked)}
+                className="rounded border-[#D1D5DB]"
+              />
+              Quick Capture Mode
+            </label>
+          )}
         </div>
         <div className="absolute right-0 top-0 flex items-center gap-3">
           {(image || mode === 'manual') && (
@@ -638,7 +875,7 @@ export default function Capture({
           {isModal && onCancel && (
             <button
               onClick={onCancel}
-              className="text-sm font-medium text-[#8E8E8E] dark:text-gray-400 flex items-center gap-1 hover:text-[#5A5A40] dark:hover:text-white px-3 py-2 rounded-xl hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+              className="text-sm font-medium text-[#8E8E8E] dark:text-gray-400 flex items-center gap-1 hover:text-[#18407B] dark:hover:text-white px-3 py-2 rounded-xl hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
             >
               <X className="w-4 h-4" /> {t('Close')}
             </button>
@@ -646,37 +883,39 @@ export default function Capture({
         </div>
       </header>
 
-      {/* Mode Selection */}
-      <div className="flex p-1 bg-white dark:bg-zinc-900 border border-[#E5E5E0] dark:border-zinc-800 rounded-xl w-fit mx-auto mb-8">
-        <button
-          onClick={() => { setMode('ocr'); resetForm({ preserveTaxonomy: true }); }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-            mode === 'ocr' ? 'bg-[#5A5A40] text-white shadow-md dark:bg-zinc-700' : 'text-[#8E8E8E] dark:text-gray-400 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800'
-          }`}
-        >
-          <ImageIcon className="w-4 h-4" /> {t('OCR Capture')}
-        </button>
-        <button
-          onClick={() => { setMode('manual'); resetForm({ preserveTaxonomy: true }); }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-            mode === 'manual' ? 'bg-[#5A5A40] text-white shadow-md dark:bg-zinc-700' : 'text-[#8E8E8E] dark:text-gray-400 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800'
-          }`}
-        >
-          <PenTool className="w-4 h-4" /> {t('Manual Entry')}
-        </button>
-      </div>
+      {/* Mode Selection - Hidden when opening a formatting draft directly */}
+      {!(isModal && prefilledDraft) && (
+        <div className="flex p-1 bg-white dark:bg-zinc-900 border border-[#E5E7EB] dark:border-zinc-800 rounded-xl w-fit mx-auto mb-8">
+          <button
+            onClick={() => { setMode('ocr'); resetForm({ preserveTaxonomy: true }); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              mode === 'ocr' ? 'bg-[#6197EC] text-white shadow-md dark:bg-zinc-700' : 'text-[#8E8E8E] dark:text-gray-400 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800'
+            }`}
+          >
+            <ImageIcon className="w-4 h-4" /> {t('OCR Capture')}
+          </button>
+          <button
+            onClick={() => { setMode('manual'); resetForm({ preserveTaxonomy: true }); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              mode === 'manual' ? 'bg-[#6197EC] text-white shadow-md dark:bg-zinc-700' : 'text-[#8E8E8E] dark:text-gray-400 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800'
+            }`}
+          >
+            <PenTool className="w-4 h-4" /> {t('Manual Entry')}
+          </button>
+        </div>
+      )}
 
-      {mode === 'ocr' && !image ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      {mode === 'ocr' && !image && !(isModal && prefilledDraft) ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-8">
           <div 
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-[#E5E5E0] dark:border-zinc-700 rounded-3xl p-12 flex flex-col items-center justify-center bg-white dark:bg-zinc-900 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all cursor-pointer group"
+            className="border-2 border-dashed border-[#E5E7EB] dark:border-zinc-700 rounded-2xl lg:rounded-3xl p-6 lg:p-12 flex flex-col items-center justify-center bg-white dark:bg-zinc-900 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all cursor-pointer group text-center"
           >
-            <div className="p-6 bg-[#F5F5F0] dark:bg-zinc-800 rounded-full mb-6 group-hover:scale-110 transition-transform">
-              <Upload className="w-12 h-12 text-[#5A5A40] dark:text-zinc-400" />
+            <div className="p-4 lg:p-6 bg-[#F5F5F7] dark:bg-zinc-800 rounded-full mb-4 lg:mb-6 group-hover:scale-110 transition-transform">
+              <Upload className="w-8 h-8 lg:w-12 lg:h-12 text-[#18407B] dark:text-zinc-400" />
             </div>
-            <h3 className="text-xl font-bold mb-2 dark:text-white">{t('Upload Book Image')}</h3>
-            <p className="text-[#8E8E8E] dark:text-gray-500 text-center">{t('Drag Drop Description')}</p>
+            <h3 className="text-lg lg:text-xl font-bold mb-2 dark:text-white">{t('Upload Book Image')}</h3>
+            <p className="text-sm lg:text-base text-[#8E8E8E] dark:text-gray-500">{t('Drag Drop Description')}</p>
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -687,13 +926,13 @@ export default function Capture({
           </div>
           <div 
             onClick={startCamera}
-            className="border-2 border-dashed border-[#E5E5E0] dark:border-zinc-700 rounded-3xl p-12 flex flex-col items-center justify-center bg-white dark:bg-zinc-900 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all cursor-pointer group"
+            className="border-2 border-dashed border-[#E5E7EB] dark:border-zinc-700 rounded-2xl lg:rounded-3xl p-6 lg:p-12 flex flex-col items-center justify-center bg-white dark:bg-zinc-900 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all cursor-pointer group text-center"
           >
-            <div className="p-6 bg-[#F5F5F0] dark:bg-zinc-800 rounded-full mb-6 group-hover:scale-110 transition-transform">
-              <Camera className="w-12 h-12 text-[#5A5A40] dark:text-zinc-400" />
+            <div className="p-4 lg:p-6 bg-[#F5F5F7] dark:bg-zinc-800 rounded-full mb-4 lg:mb-6 group-hover:scale-110 transition-transform">
+              <Camera className="w-8 h-8 lg:w-12 lg:h-12 text-[#18407B] dark:text-zinc-400" />
             </div>
-            <h3 className="text-xl font-bold mb-2 dark:text-white">{t('Take Picture')}</h3>
-            <p className="text-[#8E8E8E] dark:text-gray-500 text-center">{t('Use Camera Description')}</p>
+            <h3 className="text-lg lg:text-xl font-bold mb-2 dark:text-white">{t('Take Picture')}</h3>
+            <p className="text-sm lg:text-base text-[#8E8E8E] dark:text-gray-500">{t('Use Camera Description')}</p>
           </div>
         </div>
       ) : (
@@ -701,13 +940,13 @@ export default function Capture({
           {/* Image Preview & OCR Status (Only for OCR mode) */}
           {mode === 'ocr' && (
             <div className="space-y-6">
-              <div className="bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden border border-[#E5E5E0] dark:border-zinc-800 shadow-sm">
+              <div className="bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden border border-[#E5E7EB] dark:border-zinc-800 shadow-sm">
                 <img src={image!} alt="Captured" className="w-full h-auto max-h-[500px] object-contain bg-[#1A1A1A]" />
               </div>
               
               {loading && !ocrResult && (
-                <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-[#E5E5E0] dark:border-zinc-800 flex items-center gap-4">
-                  <Loader2 className="w-6 h-6 text-[#5A5A40] dark:text-zinc-400 animate-spin" />
+                <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-[#E5E7EB] dark:border-zinc-800 flex items-center gap-4">
+                  <Loader2 className="w-6 h-6 text-[#18407B] dark:text-zinc-400 animate-spin" />
                   <div>
                     <p className="font-bold dark:text-white">{t('Analyzing OCR')}</p>
                     <p className="text-sm text-[#8E8E8E] dark:text-gray-500">{t('OCR Correction')}</p>
@@ -716,21 +955,34 @@ export default function Capture({
               )}
 
               {ocrResult && (
-                <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-2xl p-6 border border-emerald-100 dark:border-emerald-800 flex items-center gap-4 text-emerald-700 dark:text-emerald-400">
-                  <Check className="w-6 h-6" />
-                  <div>
-                    <p className="font-bold">{t('OCR Successful')}</p>
-                    <p className="text-sm opacity-80">{t('Text Extracted')}</p>
+                <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-2xl p-6 border border-emerald-100 dark:border-emerald-800 flex items-center justify-between">
+                  <div className="flex items-center gap-4 text-emerald-700 dark:text-emerald-400">
+                    <Check className="w-6 h-6" />
+                    <div>
+                      <p className="font-bold">{t('OCR Successful')}</p>
+                      <p className="text-sm opacity-80">{t('Text Extracted')}</p>
+                    </div>
                   </div>
+                  {image && (
+                    <button
+                      onClick={() => { setOcrResult(null); processOCR(image); }}
+                      disabled={loading}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-100 dark:bg-emerald-800/50 text-emerald-700 dark:text-emerald-300 rounded-xl text-sm font-bold hover:bg-emerald-200 dark:hover:bg-emerald-700/50 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      {t('Retry OCR')}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
           )}
 
           {/* Form */}
-          <div className={`bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-[#E5E5E0] dark:border-zinc-800 shadow-sm space-y-6 ${mode === 'manual' ? 'max-w-3xl mx-auto w-full' : ''}`}>
-            {/* Taxonomy Dropdowns - Hidden in modal mode since taxonomy is shown in header */}
-            {!isModal && (
+          <div className={`bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-[#E5E7EB] dark:border-zinc-800 shadow-sm space-y-6 ${mode === 'manual' ? 'max-w-3xl mx-auto w-full' : ''}`}>
+
+            {/* Taxonomy Dropdowns */}
+            {(!quickCaptureMode && (!isModal || !!editingFawaidId)) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-xs font-bold uppercase tracking-wider text-[#8E8E8E] dark:text-gray-500">
@@ -746,10 +998,10 @@ export default function Capture({
                       sharhId: ''
                     });
                   }}
-                  className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 min-w-0"
+                  className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 min-w-0"
                 >
                   <option value="">{t('Select Science')}</option>
-                  {sciences?.map(s => (
+                  {localSciences?.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
@@ -768,7 +1020,7 @@ export default function Capture({
                         sharhId: ''
                       });
                     }}
-                    className="flex-1 min-w-0 bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 disabled:opacity-50 text-ellipsis overflow-hidden"
+                    className="flex-1 min-w-0 bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 disabled:opacity-50 text-ellipsis overflow-hidden"
                     disabled={!formData.scienceId}
                   >
                     <option value="">{t('Select Book')}</option>
@@ -779,7 +1031,7 @@ export default function Capture({
                   <button
                     onClick={() => setIsAddingBook(true)}
                     disabled={!formData.scienceId}
-                    className="p-3 bg-[#5A5A40] dark:bg-zinc-700 text-white rounded-xl hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-3 bg-[#6197EC] dark:bg-zinc-700 text-white rounded-xl hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     title={t('Add New Book')}
                   >
                     <Plus className="w-4 h-4" />
@@ -799,7 +1051,7 @@ export default function Capture({
                         sharhId: e.target.value
                       });
                     }}
-                    className="flex-1 min-w-0 bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 disabled:opacity-50 text-ellipsis overflow-hidden"
+                    className="flex-1 min-w-0 bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 disabled:opacity-50 text-ellipsis overflow-hidden"
                     disabled={!formData.bookId}
                   >
                     <option value="">{t('General Notes')}</option>
@@ -810,7 +1062,7 @@ export default function Capture({
                   <button
                     onClick={() => setIsAddingSharh(true)}
                     disabled={!formData.bookId}
-                    className="p-3 bg-[#5A5A40] dark:bg-zinc-700 text-white rounded-xl hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-3 bg-[#6197EC] dark:bg-zinc-700 text-white rounded-xl hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     title={t('Add New Sharh')}
                   >
                     <Plus className="w-4 h-4" />
@@ -820,7 +1072,8 @@ export default function Capture({
             </div>
             )}
 
-            <div className="grid grid-cols-3 gap-4">
+
+            {!quickCaptureMode && <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-xs font-bold uppercase tracking-wider text-[#8E8E8E] dark:text-gray-500">
                   {t('Volume')}
@@ -830,7 +1083,7 @@ export default function Capture({
                   value={formData.volumeNumber}
                   onChange={e => setFormData({...formData, volumeNumber: e.target.value})}
                   placeholder={t('e.g. 2')}
-                  className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                  className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                 />
               </div>
               <div className="space-y-2">
@@ -842,7 +1095,7 @@ export default function Capture({
                   value={formData.pageNumber}
                   onChange={e => setFormData({...formData, pageNumber: e.target.value})}
                   placeholder={t('e.g. 145')}
-                  className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                  className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                 />
               </div>
               <div className="space-y-2">
@@ -855,13 +1108,14 @@ export default function Capture({
                   value={formData.tabah}
                   onChange={e => setFormData({...formData, tabah: e.target.value})}
                   placeholder={t('e.g. Dar al-Kutub')}
-                  className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                  className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                 />
                 <datalist id="tabahs-list">
                   {tabahs.map((t, i) => <option key={i} value={t} />)}
                 </datalist>
               </div>
-            </div>
+            </div>}
+
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -871,7 +1125,7 @@ export default function Capture({
                     onClick={handleSuggestMetadata}
                     disabled={isGeneratingMetadata || !formData.content}
                     title={t('Suggest Title & Tags')}
-                    className="text-xs font-bold text-[#5A5A40] dark:text-zinc-300 bg-[#F5F5F0] dark:bg-zinc-800 hover:bg-[#E5E5E0] dark:hover:bg-zinc-700 px-2 py-1 rounded-md flex items-center gap-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-xs font-bold text-[#18407B] dark:text-zinc-300 bg-[#F5F5F7] dark:bg-zinc-800 hover:bg-[#E5E7EB] dark:hover:bg-zinc-700 px-2 py-1 rounded-md flex items-center gap-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isGeneratingMetadata ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
                     <span className="hidden sm:inline">{t('Auto-Suggest')}</span>
@@ -883,7 +1137,7 @@ export default function Capture({
                 value={formData.title}
                 onChange={e => setFormData({...formData, title: e.target.value})}
                 placeholder={t('Descriptive Title')}
-                className="aref-ruqaa-regular text-2xl w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 placeholder:font-sans placeholder:text-base placeholder:font-normal"
+                className="aref-ruqaa-regular text-2xl w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 placeholder:font-sans placeholder:text-base placeholder:font-normal"
                 dir={language === 'ar' ? 'rtl' : 'ltr'}
               />
             </div>
@@ -896,7 +1150,7 @@ export default function Capture({
                 <button
                   onClick={(e) => { e.preventDefault(); handleTranslate(); }}
                   disabled={translating || !formData.content}
-                  className="flex items-center gap-1 px-3 py-1 bg-[#5A5A40]/10 hover:bg-[#5A5A40]/20 text-[#5A5A40] dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1 px-3 py-1 bg-[#6197EC]/10 hover:bg-[#6197EC]/20 text-[#18407B] dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
                   type="button"
                 >
                   {translating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Languages className="w-3 h-3" />}
@@ -907,27 +1161,129 @@ export default function Capture({
                 value={formData.content}
                 onChange={e => setFormData({...formData, content: e.target.value})}
                 rows={6}
-                className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 resize-none scheherazade-new-regular text-xl leading-relaxed"
+                className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 resize-none scheherazade-new-regular text-xl leading-relaxed"
                 placeholder={mode === 'ocr' ? t('Extracted Text Placeholder') : t('Enter Text Placeholder')}
                 dir="auto"
               />
             </div>
             
-            {formData.content && (
-              <ShamelaMatch 
-                content={formData.content} 
-                onMatchConfirm={(metadata) => {
+            {devMode && formData.content && !quickCaptureMode && (
+              <button
+                type="button"
+                onClick={() => setIsShamelaOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-[#6197EC]/10 dark:bg-zinc-800 text-[#18407B] dark:text-zinc-300 rounded-xl text-sm font-bold hover:bg-[#6197EC]/20 dark:hover:bg-zinc-700 transition-all border border-[#6197EC]/20 dark:border-zinc-700"
+              >
+                <Search className="w-4 h-4" />
+                {t('Search Shamela')}
+              </button>
+            )}
+
+            {devMode && <ShamelaMatch
+              isOpen={isShamelaOpen}
+              onClose={() => setIsShamelaOpen(false)}
+              content={formData.content}
+              currentPage={formData.pageNumber}
+              volume={formData.volumeNumber}
+              onFillReferences={async (ref: ParsedReference) => {
+                try {
+                  const baseBookName = ref.isDerivedWork ? (ref.matn || ref.rawBookName) : ref.rawBookName;
+                  const sharhTitle = ref.isDerivedWork ? (ref.sharhTitle || ref.rawBookName) : null;
+                  const refAuthor = ref.author;
+
+                  // 1. Categorize (find science) via AI or fallback
+                  let targetScienceId: number | null = null;
+                  try {
+                    const categorizationResult = await categorizeBook(
+                      baseBookName, refAuthor || '',
+                      localSciences.map(s => ({ id: s.id, name: s.name })), apiKey
+                    );
+                    if (categorizationResult?.matchedScienceId) {
+                      targetScienceId = categorizationResult.matchedScienceId;
+                    } else if (categorizationResult?.newScienceName) {
+                      const dup = localSciences.find(s => normalizeName(s.name) === normalizeName(categorizationResult.newScienceName));
+                      targetScienceId = dup ? dup.id : await handleAutoCreateScience(categorizationResult.newScienceName);
+                    }
+                  } catch {
+                    const keywordMap: Record<string, string> = {
+                      'عقيدة': 'Aqeedah', 'توحيد': 'Aqeedah', 'التفسير': 'Tafsir',
+                      'الفقه': 'Fiqh', 'الحديث': 'Hadith', 'النحو': 'Nahw', 'السيرة': 'Seerah',
+                    };
+                    for (const [kw, sciName] of Object.entries(keywordMap)) {
+                      if (baseBookName.includes(kw)) {
+                        const match = localSciences.find(s => normalizeName(s.name) === normalizeName(sciName));
+                        if (match) { targetScienceId = match.id; break; }
+                      }
+                    }
+                  }
+
+                  if (!targetScienceId) {
+                    setFormData(prev => ({ ...prev, pageNumber: ref.page || prev.pageNumber, volumeNumber: ref.volume || prev.volumeNumber }));
+                    return;
+                  }
+
+                  setFormData(prev => ({ ...prev, scienceId: String(targetScienceId) }));
+
+                  // 2. Find or create book (with user permission)
+                  const booksRes = await fetch(`/api/books?scienceId=${targetScienceId}`);
+                  const existingBooks: BookType[] = await booksRes.json();
+                  let targetBook = existingBooks.find((b: BookType) => normalizeName(b.title) === normalizeName(baseBookName));
+
+                  if (!targetBook) {
+                    const confirmResult = await showModal({
+                      type: 'confirm', title: t('Create New Book'),
+                      message: `Book "${baseBookName}" not found. Create it?`,
+                      confirmText: t('Create'), cancelText: t('Cancel'),
+                    });
+                    if (confirmResult !== 'confirm') {
+                      setFormData(prev => ({ ...prev, pageNumber: ref.page || prev.pageNumber, volumeNumber: ref.volume || prev.volumeNumber }));
+                      return;
+                    }
+                    const createRes = await fetch('/api/books', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ science_id: targetScienceId, title: baseBookName, author: refAuthor || '', total_pages: 0 }),
+                    });
+                    if (createRes.ok) targetBook = await createRes.json();
+                  }
+
+                  if (targetBook) {
+                    setBooks(prev => prev.some(b => b.id === targetBook!.id) ? prev : [...prev, targetBook!]);
+                  }
+
+                  // 3. Handle sharh if derived work
+                  let targetSharhId = '';
+                  if (targetBook && sharhTitle) {
+                    const shuruuhRes = await fetch(`/api/shuruuh?bookId=${targetBook.id}`);
+                    const existingShuruuh: Sharh[] = shuruuhRes.ok ? await shuruuhRes.json() : [];
+                    let targetSharh = existingShuruuh.find((s: Sharh) => normalizeName(s.title) === normalizeName(sharhTitle));
+                    if (!targetSharh) {
+                      const createSharhRes = await fetch('/api/shuruuh', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ book_id: targetBook.id, title: sharhTitle, author: refAuthor || undefined }),
+                      });
+                      if (createSharhRes.ok) targetSharh = await createSharhRes.json();
+                    }
+                    if (targetSharh) {
+                      targetSharhId = String(targetSharh.id);
+                      setShuruuh(prev => prev.some(s => s.id === targetSharh!.id) ? prev : [...prev, targetSharh!]);
+                    }
+                  }
+
+                  // 4. Set all form data
                   setFormData(prev => ({
                     ...prev,
-                    author: metadata.author || prev.author,
-                    pageNumber: metadata.page_number || prev.pageNumber,
-                    // If book is found, you might want to find it in the DB and set bookId,
-                    // but for now setting the title in extra_notes or attempting to map
-                    extra_notes: `${prev.extra_notes ? prev.extra_notes + '\n\n' : ''}Source matched via Shamela: ${metadata.book_name} - URL: ${metadata.source_url}`
+                    scienceId: String(targetScienceId),
+                    bookId: targetBook ? String(targetBook.id) : prev.bookId,
+                    sharhId: targetSharhId || prev.sharhId,
+                    pageNumber: ref.page || prev.pageNumber,
+                    volumeNumber: ref.volume || prev.volumeNumber,
                   }));
-                }} 
-              />
-            )}
+                } catch (e) {
+                  console.error('Fill references error:', e);
+                  setFormData(prev => ({ ...prev, pageNumber: ref.page || prev.pageNumber, volumeNumber: ref.volume || prev.volumeNumber }));
+                }
+              }} 
+
+            />}
 
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider text-[#8E8E8E] dark:text-gray-500">{t('Extra Notes')} ({t('Optional')})</label>
@@ -935,18 +1291,18 @@ export default function Capture({
                 value={formData.extra_notes || ''}
                 onChange={e => setFormData({...formData, extra_notes: e.target.value})}
                 rows={3}
-                className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 resize-none scheherazade-new-regular text-xl leading-relaxed"
+                className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 resize-none scheherazade-new-regular text-xl leading-relaxed"
                 placeholder={t('Enter Extra Notes')}
                 dir="auto"
               />
             </div>
 
-            <div className="flex items-center justify-between">
+            {!quickCaptureMode && <div className="flex items-center justify-between">
               <div className="space-y-2 text-right w-full">
                 <label className="text-xs font-bold uppercase tracking-wider text-[#8E8E8E] dark:text-gray-500">{t('Tags')}</label>
                 <div className="flex flex-wrap justify-end gap-2">
                   {formData.tags?.map((tag, idx) => (
-                    <span key={idx} className="bg-[#5A5A40]/10 dark:bg-zinc-800 text-[#5A5A40] dark:text-zinc-300 text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                    <span key={idx} className="bg-[#6197EC]/10 dark:bg-zinc-800 text-[#18407B] dark:text-zinc-300 text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
                       {tag}
                       <button onClick={() => setFormData({...formData, tags: formData.tags.filter(t => t !== tag)})}>
                         <X className="w-2 h-2" />
@@ -955,13 +1311,13 @@ export default function Capture({
                   ))}
                   <button 
                     onClick={() => setIsAddingTag(true)}
-                    className="bg-[#F5F5F0] dark:bg-zinc-800 text-[#8E8E8E] dark:text-gray-400 text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 hover:bg-[#E5E5E0] dark:hover:bg-zinc-700"
+                    className="bg-[#F5F5F7] dark:bg-zinc-800 text-[#8E8E8E] dark:text-gray-400 text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 hover:bg-[#E5E7EB] dark:hover:bg-zinc-700"
                   >
                     <Plus className="w-2 h-2" /> {t('Add')}
                   </button>
                 </div>
               </div>
-            </div>
+            </div>}
 
             {/* Add Tag Modal */}
             <AnimatePresence>
@@ -976,7 +1332,7 @@ export default function Capture({
                     initial={{ scale: 0.95, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     exit={{ scale: 0.95, opacity: 0 }}
-                    className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-xs w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+                    className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-xs w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
                   >
                     <h3 className="text-lg font-serif font-bold mb-4 dark:text-white">{t('Add Tag')}</h3>
                     <input
@@ -984,11 +1340,16 @@ export default function Capture({
                       value={newTag}
                       onChange={(e) => setNewTag(e.target.value)}
                       placeholder={t('Enter Tag Name')}
-                      className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 mb-4 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                      className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 mb-4 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
-                          if (newTag) setFormData({...formData, tags: [...(formData.tags || []), newTag]});
+                          if (newTag) {
+                            const trimmed = newTag.trim();
+                            if (trimmed && !(formData.tags || []).includes(trimmed)) {
+                              setFormData({...formData, tags: [...(formData.tags || []), trimmed]});
+                            }
+                          }
                           setIsAddingTag(false);
                           setNewTag('');
                         }
@@ -1000,18 +1361,23 @@ export default function Capture({
                           setIsAddingTag(false);
                           setNewTag('');
                         }}
-                        className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+                        className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
                       >
                         {t('Cancel')}
                       </button>
                       <button
                         onClick={() => {
-                          if (newTag) setFormData({...formData, tags: [...(formData.tags || []), newTag]});
+                          if (newTag) {
+                            const trimmed = newTag.trim();
+                            if (trimmed && !(formData.tags || []).includes(trimmed)) {
+                              setFormData({...formData, tags: [...(formData.tags || []), trimmed]});
+                            }
+                          }
                           setIsAddingTag(false);
                           setNewTag('');
                         }}
                         disabled={!newTag.trim()}
-                        className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all disabled:opacity-50"
+                        className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all disabled:opacity-50"
                       >
                         {t('Add')}
                       </button>
@@ -1036,14 +1402,25 @@ export default function Capture({
 
             
 
-            <button 
-              onClick={handleSave}
-              disabled={loading}
-              className="w-full bg-[#5A5A40] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#5A5A40]/20 dark:shadow-none hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-              {t('Save Fāʾidah')}
-            </button>
+            {quickCaptureMode ? (
+              <button
+                onClick={handleSave}
+                disabled={loading || !formData.content}
+                className="w-full bg-[#6197EC] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#6197EC]/20 dark:shadow-none hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                Save for later
+              </button>
+            ) : (
+              <button 
+                onClick={handleSave}
+                disabled={loading}
+                className="w-full bg-[#6197EC] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#6197EC]/20 dark:shadow-none hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                {t('Save Fāʾidah')}
+              </button>
+            )}
           </div>
         </div>
       )}

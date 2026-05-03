@@ -4,6 +4,7 @@ import { Fawaid, Science, Book, Sharh, Stats } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSettings } from '../contexts/SettingsContext';
 import { useModal } from '../contexts/ModalContext';
+import ShamelaMatch from './shamela/ShamelaMatch';
 
 export default function SearchPage({
   sciences,
@@ -16,11 +17,12 @@ export default function SearchPage({
   onNavigate: (tab: string) => void,
   onUpdate?: () => void
 }) {
-  const [query, setQuery] = useState(() => localStorage.getItem('fawaid_search_query') || '');
+  const [query, setQuery] = useState('');
   const [searchMode, setSearchMode] = useState<'smart' | 'exact'>('smart');
   const [results, setResults] = useState<Fawaid[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedTag, setSelectedTag] = useState('');
   const [expansions, setExpansions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -32,26 +34,27 @@ export default function SearchPage({
   const [editingScienceId, setEditingScienceId] = useState('');
   const { t, language } = useSettings();
   const { showModal } = useModal();
+  const devMode = typeof window !== 'undefined' && localStorage.getItem('fawaid_dev_mode') === 'true';
   
-  const [filters, setFilters] = useState(() => {
-    const saved = localStorage.getItem('fawaid_search_filters');
-    const parsed = saved ? JSON.parse(saved) : {};
-    return {
-      scienceId: parsed.scienceId || '',
-      bookId: parsed.bookId || '',
-      author: parsed.author || ''
-    };
-  });
+
+  const [filters, setFilters] = useState(() => ({
+    scienceId: '',
+    bookId: '',
+    author: '',
+    status: ''
+  }));
+
+  const [shamelaTargetContent, setShamelaTargetContent] = useState<string | null>(null);
+  const [isShamelaModalOpen, setIsShamelaModalOpen] = useState(false);
 
   const [authors, setAuthors] = useState<string[]>([]);
 
+  // Clear localStorage when component mounts to ensure fresh search each time
   useEffect(() => {
-    localStorage.setItem('fawaid_search_query', query);
-  }, [query]);
-
-  useEffect(() => {
-    localStorage.setItem('fawaid_search_filters', JSON.stringify(filters));
-  }, [filters]);
+    localStorage.removeItem('fawaid_search_query');
+    localStorage.removeItem('fawaid_search_tag');
+    localStorage.removeItem('fawaid_search_filters');
+  }, []);
 
   useEffect(() => {
     if (filters.scienceId) {
@@ -96,6 +99,7 @@ export default function SearchPage({
       })
       .catch(() => setEditShuruuh([]));
   }, [editingNote?.book_id]);
+
 
   const handleDelete = async (id: number) => {
     if ((await showModal({ type: 'confirm', title: t ? t('Confirm') : 'Confirm', message: t('Delete Fawaid Confirmation') })) !== 'confirm') return;
@@ -150,7 +154,8 @@ export default function SearchPage({
       questions: updatedNote.questions || [],
       extra_notes: updatedNote.extra_notes,
       volume_number: updatedNote.volume_number,
-      language: updatedNote.language || (language === 'ar' ? 'arabic' : 'english')
+      language: updatedNote.language || (language === 'ar' ? 'arabic' : 'english'),
+      status: updatedNote.status || 'formatted'
     };
 
     setSavingEdit(true);
@@ -214,6 +219,8 @@ export default function SearchPage({
       if (filters.scienceId) params.append('scienceId', filters.scienceId);
       if (filters.bookId) params.append('bookId', filters.bookId);
       if (filters.author) params.append('author', filters.author);
+      if (filters.status) params.append('status', filters.status);
+      if (selectedTag) params.append('tag', selectedTag);
       params.append('mode', searchMode);
 
       if (query.trim()) {
@@ -225,8 +232,9 @@ export default function SearchPage({
         setExpansions(data.expansions || []);
       } else {
         const res = await fetch(`/api/fawaid?${params.toString()}`);
+        if (!res.ok) throw new Error('Failed to fetch fawaid');
         const data = await res.json();
-        setResults(data);
+        setResults(Array.isArray(data) ? data : []);
         setExpansions([]);
       }
     } catch (e) {
@@ -242,7 +250,7 @@ export default function SearchPage({
       handleSearch();
     }, 300);
     return () => clearTimeout(delayDebounce);
-  }, [query, filters, language, searchMode]);
+  }, [query, filters, language, searchMode, selectedTag]);
 
   const copyIndividual = async (f: Fawaid) => {
     const ref = f.reference || (f.page_number ? `p. ${f.page_number}` : '');
@@ -286,12 +294,12 @@ export default function SearchPage({
     <div className="space-y-8 relative">
       <header className="flex justify-between items-start">
         <div>
-          <h2 className="text-3xl font-serif font-bold text-[#1A1A1A] dark:text-white">{t('Global Search')}</h2>
+          <h2 className="text-3xl montserrat-bold text-[#1A1A1A] dark:text-white">{t('Global Search')}</h2>
           <p className="text-[#8E8E8E] dark:text-gray-400 mt-2">{t('Search Description')}</p>
         </div>
         <button 
           onClick={() => onNavigate('dashboard')}
-          className="p-2 text-[#8E8E8E] hover:text-[#1A1A1A] dark:hover:text-white transition-colors bg-[#F5F5F0] dark:bg-zinc-800 rounded-full"
+          className="p-2 text-[#8E8E8E] hover:text-[#1A1A1A] dark:hover:text-white transition-colors bg-[#F5F5F7] dark:bg-zinc-800 rounded-full"
           title="Back to Dashboard"
         >
           <X className="w-6 h-6" />
@@ -299,7 +307,7 @@ export default function SearchPage({
       </header>
 
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatCard
             icon={<GraduationCap className="w-6 h-6" />}
             label={t('Total Sciences')}
@@ -313,6 +321,12 @@ export default function SearchPage({
             color="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
           />
           <StatCard
+            icon={<TrendingUp className="w-6 h-6" />}
+            label={t('Needs Formatting')}
+            value={stats.needsFormatting || 0}
+            color="bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400"
+          />
+          <StatCard
             icon={<Library className="w-6 h-6" />}
             label={t('Total Fawaid')}
             value={stats.totalFawaid}
@@ -321,7 +335,7 @@ export default function SearchPage({
         </div>
       )}
 
-      <div className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-[#E5E5E0] dark:border-zinc-800 shadow-sm space-y-6">
+      <div className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-[#E5E7EB] dark:border-zinc-800 shadow-sm space-y-6">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-[#8E8E8E] dark:text-gray-500" />
           <input 
@@ -332,10 +346,10 @@ export default function SearchPage({
             onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
             onChange={e => setQuery(e.target.value)}
             placeholder={t('Search Placeholder')}
-            className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-2xl pl-14 pr-6 py-5 text-lg focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 transition-all"
+            className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-2xl pl-14 pr-6 py-5 text-lg focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 transition-all"
           />
           {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-zinc-900 border border-[#E5E5E0] dark:border-zinc-800 rounded-xl shadow-lg z-10 overflow-hidden">
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-zinc-900 border border-[#E5E7EB] dark:border-zinc-800 rounded-xl shadow-lg z-10 overflow-hidden">
               {suggestions.map((s, i) => (
                 <button
                   key={i}
@@ -344,7 +358,7 @@ export default function SearchPage({
                     setQuery(s);
                     setShowSuggestions(false);
                   }}
-                  className="w-full text-left px-4 py-3 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 text-[#1A1A1A] dark:text-white transition-colors"
+                  className="w-full text-left px-4 py-3 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 text-[#1A1A1A] dark:text-white transition-colors"
                 >
                   <Search className="inline-block w-4 h-4 mr-2 text-[#8E8E8E]" />
                   {s}
@@ -354,6 +368,18 @@ export default function SearchPage({
           )}
         </div>
 
+        {selectedTag && (
+          <div className="flex items-center gap-2 text-xs font-bold text-[#18407B] dark:text-zinc-300">
+            <span className="bg-[#F5F5F7] dark:bg-zinc-800 px-3 py-1 rounded-full">Tag: #{selectedTag}</span>
+            <button
+              onClick={() => setSelectedTag('')}
+              className="px-2 py-1 rounded bg-red-50 dark:bg-red-900/30 text-red-600"
+            >
+              {t('Clear')}
+            </button>
+          </div>
+        )}
+
         <div className="flex gap-4">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -362,9 +388,9 @@ export default function SearchPage({
               value="smart"
               checked={searchMode === 'smart'}
               onChange={() => setSearchMode('smart')}
-              className="text-[#5A5A40] focus:ring-[#5A5A40]"
+              className="text-[#18407B] focus:ring-[#6197EC]"
             />
-            <span className="text-sm font-medium dark:text-gray-300">Smart Mode</span>
+            <span className="text-sm font-medium dark:text-gray-300">{t('Smart Mode')}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -373,9 +399,9 @@ export default function SearchPage({
               value="exact"
               checked={searchMode === 'exact'}
               onChange={() => setSearchMode('exact')}
-              className="text-[#5A5A40] focus:ring-[#5A5A40]"
+              className="text-[#18407B] focus:ring-[#6197EC]"
             />
-            <span className="text-sm font-medium dark:text-gray-300">Exact Match</span>
+            <span className="text-sm font-medium dark:text-gray-300">{t('Exact Match')}</span>
           </label>
         </div>
 
@@ -387,7 +413,7 @@ export default function SearchPage({
                 <button
                   key={i}
                   onClick={() => setQuery(exp)}
-                  className="px-3 py-1 bg-[#F5F5F0] dark:bg-zinc-800 text-[#5A5A40] dark:text-zinc-300 rounded-lg hover:bg-[#E5E5E0] dark:hover:bg-zinc-700 transition-colors"
+                  className="px-3 py-1 bg-[#F5F5F7] dark:bg-zinc-800 text-[#18407B] dark:text-zinc-300 rounded-lg hover:bg-[#E5E7EB] dark:hover:bg-zinc-700 transition-colors"
                 >
                   {exp}
                 </button>
@@ -396,11 +422,11 @@ export default function SearchPage({
           </div>
         )}
 
-        <div className="flex flex-wrap gap-4 pt-4 border-t border-[#F5F5F0] dark:border-zinc-800">
+        <div className="flex flex-wrap gap-4 pt-4 border-t border-[#F5F5F7] dark:border-zinc-800">
           <select 
             value={filters.scienceId}
             onChange={e => setFilters({...filters, scienceId: e.target.value, bookId: ''})}
-            className="flex-1 min-w-[200px] bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+            className="flex-1 min-w-[200px] bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
           >
             <option value="">{t('All Sciences')}</option>
             {sciences?.map(s => (
@@ -411,7 +437,7 @@ export default function SearchPage({
           <select 
             value={filters.bookId}
             onChange={e => setFilters({...filters, bookId: e.target.value})}
-            className="flex-1 min-w-[200px] bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+            className="flex-1 min-w-[200px] bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
           >
             <option value="">{t('All Books')}</option>
             {books?.map(b => (
@@ -422,12 +448,22 @@ export default function SearchPage({
           <select 
             value={filters.author}
             onChange={e => setFilters({...filters, author: e.target.value})}
-            className="flex-1 min-w-[200px] bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+            className="flex-1 min-w-[200px] bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
           >
             <option value="">{t('All Authors')}</option>
             {authors?.map((author, index) => (
               <option key={index} value={author}>{author}</option>
             ))}
+          </select>
+
+          <select
+            value={filters.status}
+            onChange={e => setFilters({ ...filters, status: e.target.value })}
+            className="flex-1 min-w-[180px] bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
+          >
+            <option value="">{t('All Statuses')}</option>
+            <option value="formatted">{t('Formatted')}</option>
+            <option value="unformatted">{t('Unformatted')}</option>
           </select>
         </div>
       </div>
@@ -435,7 +471,7 @@ export default function SearchPage({
       <div className="space-y-4">
         {loading ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 text-[#5A5A40] dark:text-zinc-400 animate-spin" />
+            <Loader2 className="w-8 h-8 text-[#18407B] dark:text-zinc-400 animate-spin" />
           </div>
         ) : (
           <AnimatePresence mode="popLayout">
@@ -446,14 +482,14 @@ export default function SearchPage({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ delay: idx * 0.03 }}
-                className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-[#E5E5E0] dark:border-zinc-800 shadow-sm hover:border-[#5A5A40] dark:hover:border-zinc-600 transition-all group"
+                className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-[#E5E7EB] dark:border-zinc-800 shadow-sm hover:border-[#6197EC] dark:hover:border-zinc-600 transition-all group"
               >
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#5A5A40] dark:text-zinc-300 bg-[#5A5A40]/10 dark:bg-zinc-800 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#18407B] dark:text-zinc-300 bg-[#6197EC]/10 dark:bg-zinc-800 px-2 py-0.5 rounded">
                       {f.science_name}
                     </span>
-                    <span className="text-[10px] sm:text-sm uppercase tracking-widest text-[#8E8E8E] dark:text-gray-500 bg-[#F5F5F0] dark:bg-zinc-800 px-2 py-0.5 rounded aref-ruqaa-regular">
+                    <span className="text-[10px] sm:text-sm uppercase tracking-widest text-[#8E8E8E] dark:text-gray-500 bg-[#F5F5F7] dark:bg-zinc-800 px-2 py-0.5 rounded aref-ruqaa-regular">
                       {f.book_title}
                     </span>
                     {(f as any).semanticScore !== undefined && (
@@ -464,36 +500,30 @@ export default function SearchPage({
                     )}
                   </div>
                   <div className="flex items-center gap-3 flex-wrap justify-end">
-                    {(f as any)._score !== undefined && (
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/40 px-2 py-0.5 rounded">
-                        Score: {((f as any)._score).toFixed(2)}
-                      </span>
-                    )}
-                    <span className="text-xs font-bold text-[#8E8E8E] dark:text-gray-500">{f.reference || (f.page_number ? `${t('Page #')} ${f.page_number}` : '')}</span>
                     <button 
                       onClick={() => toggleExpand(f.id)}
-                      className="p-2 bg-[#F5F5F0] dark:bg-zinc-800 text-[#5A5A40] dark:text-zinc-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-[#E5E5E0] dark:hover:bg-zinc-700"
+                      className="p-2 bg-[#F5F5F7] dark:bg-zinc-800 text-[#18407B] dark:text-zinc-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-[#E5E7EB] dark:hover:bg-zinc-700"
                       title={t('Expand / Collapse')}
                     >
                       <Maximize2 className={`w-4 h-4 transition-transform ${expandedIds.has(f.id) ? 'rotate-180 scale-90' : ''}`} />
                     </button>
                     <button 
                       onClick={() => viewInBook(f)}
-                      className="p-2 bg-[#F5F5F0] dark:bg-zinc-800 text-[#5A5A40] dark:text-zinc-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-[#E5E5E0] dark:hover:bg-zinc-700"
+                      className="p-2 bg-[#F5F5F7] dark:bg-zinc-800 text-[#18407B] dark:text-zinc-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-[#E5E7EB] dark:hover:bg-zinc-700"
                       title={t('View in Book')}
                     >
                       <ExternalLink className="w-4 h-4" />
                     </button>
                     <button 
                       onClick={() => copyIndividual(f)}
-                      className="p-2 bg-[#F5F5F0] dark:bg-zinc-800 text-[#5A5A40] dark:text-zinc-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-[#E5E5E0] dark:hover:bg-zinc-700"
+                      className="p-2 bg-[#F5F5F7] dark:bg-zinc-800 text-[#18407B] dark:text-zinc-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-[#E5E7EB] dark:hover:bg-zinc-700"
                       title={t('Copy')}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => openEditModal(f)}
-                      className="p-2 bg-[#F5F5F0] dark:bg-zinc-800 text-[#5A5A40] dark:text-zinc-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-[#E5E5E0] dark:hover:bg-zinc-700"
+                      className="p-2 bg-[#F5F5F7] dark:bg-zinc-800 text-[#18407B] dark:text-zinc-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-[#E5E7EB] dark:hover:bg-zinc-700"
                       title={t('Edit')}
                     >
                       <Edit2 className="w-4 h-4" />
@@ -505,6 +535,15 @@ export default function SearchPage({
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
+                    {devMode && (
+                      <button 
+                        onClick={() => { setShamelaTargetContent(f.content); setIsShamelaModalOpen(true); }}
+                        className="p-2 bg-[#6197EC]/10 dark:bg-zinc-800 text-[#18407B] dark:text-zinc-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-[#6197EC]/20 dark:hover:bg-zinc-700"
+                        title={t('Search Shamela')}
+                      >
+                        <Search className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -514,19 +553,32 @@ export default function SearchPage({
                   {f.content}
                 </p>
 
-                <div className="flex flex-col gap-2 pt-4 border-t border-[#F5F5F0] dark:border-zinc-800">
+                <div className="flex flex-col gap-2 pt-4 border-t border-[#F5F5F7] dark:border-zinc-800">
                   <div className="flex items-center justify-between">
                     <div className="flex gap-1 flex-wrap">
                       {f.tags?.map((tag, i) => (
-                        <span key={i} className="text-[9px] font-bold text-[#8E8E8E] dark:text-gray-400 bg-[#F5F5F0] dark:bg-zinc-800 px-2 py-0.5 rounded-full">
+                        <span key={i} className="text-[9px] font-bold text-[#8E8E8E] dark:text-gray-400 bg-[#F5F5F7] dark:bg-zinc-800 px-2 py-0.5 rounded-full">
                           #{tag}
                         </span>
                       ))}
                     </div>
+                    <div className="flex items-center gap-3 flex-wrap justify-end">
+                      <span className="text-[10px] text-[#8E8E8E] dark:text-gray-500 font-bold">
+                        {t('Linked:')} {f.connections?.length || 0}
+                      </span>
+                      {f.reference || f.page_number ? (
+                        <span className="text-xs font-bold text-[#8E8E8E] dark:text-gray-500">{f.reference || (f.page_number ? `${t('Page #')} ${f.page_number}` : '')}</span>
+                      ) : null}
+                      {(f as any)._score !== undefined && (
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/40 px-2 py-0.5 rounded">
+                          Score: {((f as any)._score).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {(f as any).match_reasons && (f as any).match_reasons.length > 0 && (
                     <div className="text-xs text-indigo-600 dark:text-indigo-400 font-medium bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded-lg inline-block self-start">
-                      Matched because: {(f as any).match_reasons.join(', ')}
+                      {t('Matched because:')} {(f as any).match_reasons.join(', ')}
                     </div>
                   )}
                 </div>
@@ -534,6 +586,56 @@ export default function SearchPage({
             ))}
           </AnimatePresence>
         )}
+
+        <AnimatePresence>
+          {devMode && isShamelaModalOpen && shamelaTargetContent && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md p-4"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="bg-white dark:bg-zinc-900 rounded-[2.5rem] p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-2xl montserrat-bold dark:text-white flex items-center gap-3">
+                    <img src="https://shamela.ws/images/logo.png" alt="Shamela" className="w-8 h-8" />
+                    {t('Shamela Search')}
+                  </h3>
+                  <button onClick={() => setIsShamelaModalOpen(false)} className="p-2 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 rounded-full transition-colors">
+                    <X className="w-6 h-6 dark:text-white" />
+                  </button>
+                </div>
+                
+                <div className="bg-[#F5F5F7] dark:bg-zinc-800/50 p-6 rounded-3xl mb-8 border border-[#E5E7EB] dark:border-zinc-800">
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#8E8E8E] dark:text-gray-500 mb-3">{t('Searching Content:')}</p>
+                  <p className="scheherazade-new-regular text-xl text-right leading-relaxed" dir="rtl">{shamelaTargetContent}</p>
+                </div>
+
+                <ShamelaMatch 
+                  content={shamelaTargetContent}
+                  onMatchConfirm={async (metadata) => {
+                    // Handle metadata match from search page (e.g. update existing note)
+                    if (editingNote) {
+                       setEditingNote({
+                         ...editingNote,
+                         author: metadata.author,
+                         page_number: metadata.page_number ? parseInt(metadata.page_number) : undefined,
+                         reference: metadata.source_url
+                       });
+                    }
+                    // For now just show info or trigger update if we had a specific result targeted
+                    await showModal({ type: 'alert', title: 'Shamela Match', message: `Matched with: ${metadata.book_name}. You can copy this data manually or edit the note.` });
+                  }}
+                />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence>
           {editingNote && (
@@ -547,7 +649,7 @@ export default function SearchPage({
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
-                className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+                className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
               >
                 <h3 className="text-2xl font-serif font-bold mb-4 dark:text-white">{t('Edit Note')}</h3>
 
@@ -574,7 +676,7 @@ export default function SearchPage({
                         );
                         setEditShuruuh([]);
                       }}
-                      className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                      className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                     >
                       <option value="">{t('Select Science')}</option>
                       {sciences?.map(s => (
@@ -599,7 +701,7 @@ export default function SearchPage({
                         );
                         setEditShuruuh([]);
                       }}
-                      className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 disabled:opacity-50"
+                      className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-[#6197EC] dark:focus:ring-zinc-600 disabled:opacity-50"
                       disabled={!editingScienceId}
                     >
                       <option value="">{t('Select Book')}</option>
@@ -622,7 +724,7 @@ export default function SearchPage({
                             : prev
                         );
                       }}
-                      className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 disabled:opacity-50"
+                      className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-[#6197EC] dark:focus:ring-zinc-600 disabled:opacity-50"
                       disabled={!editingNote.book_id}
                     >
                       <option value="">{t('General Notes')}</option>
@@ -638,7 +740,7 @@ export default function SearchPage({
                     <input
                       value={editingNote.title || ''}
                       onChange={e => setEditingNote(prev => prev ? { ...prev, title: e.target.value } : prev)}
-                      className="aref-ruqaa-regular text-2xl w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                      className="aref-ruqaa-regular text-2xl w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                       placeholder={t('Title Placeholder')}
                       dir="auto"
                     />
@@ -649,7 +751,7 @@ export default function SearchPage({
                     <textarea
                       value={editingNote.content || ''}
                       onChange={e => setEditingNote(prev => prev ? { ...prev, content: e.target.value } : prev)}
-                      className="w-full h-32 resize-none text-xl scheherazade-new-regular leading-relaxed bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                      className="w-full h-32 resize-none text-xl scheherazade-new-regular leading-relaxed bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                       placeholder={t('Content Placeholder')}
                       dir="auto"
                     />
@@ -660,7 +762,7 @@ export default function SearchPage({
                     <textarea
                       value={editingNote.extra_notes || ''}
                       onChange={e => setEditingNote(prev => prev ? { ...prev, extra_notes: e.target.value } : prev)}
-                      className="w-full h-16 resize-none text-lg scheherazade-new-regular leading-relaxed bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                      className="w-full h-16 resize-none text-lg scheherazade-new-regular leading-relaxed bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                       placeholder={t('Enter Extra Notes')}
                       dir="auto"
                     />
@@ -672,14 +774,14 @@ export default function SearchPage({
                     <input
                       value={editingNote.author || ''}
                       onChange={e => setEditingNote(prev => prev ? { ...prev, author: e.target.value } : prev)}
-                      className="flex-1 text-xs font-bold bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-2 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                      className="flex-1 text-xs font-bold bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-2 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                       placeholder={t('Author Placeholder')}
                     />
                     <input
                       type="text"
                       value={editingNote.reference || ''}
                       onChange={e => setEditingNote(prev => prev ? { ...prev, reference: e.target.value } : prev)}
-                      className="flex-1 text-xs font-bold bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-2 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                      className="flex-1 text-xs font-bold bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-2 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                       placeholder={t('Reference')}
                     />
                   </div>
@@ -693,14 +795,14 @@ export default function SearchPage({
                       setEditingScienceId('');
                       setEditShuruuh([]);
                     }}
-                    className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+                    className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
                   >
                     {t('Cancel')}
                   </button>
                   <button
                     onClick={handleUpdate}
                     disabled={isEditSaveDisabled}
-                    className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : t('Save')}
                   </button>
@@ -711,7 +813,7 @@ export default function SearchPage({
         </AnimatePresence>
 
         {!loading && results.length === 0 && (
-          <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-[#E5E5E0] dark:border-zinc-800 border-dashed">
+          <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-[#E5E7EB] dark:border-zinc-800 border-dashed">
             <p className="text-[#8E8E8E] dark:text-gray-500">{t('No results found')}</p>
           </div>
         )}
@@ -727,7 +829,7 @@ function StatCard({ icon, label, value, color }: {
   color: string
 }) {
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-[#E5E5E0] dark:border-zinc-800 shadow-sm flex items-center gap-5">
+    <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-[#E5E7EB] dark:border-zinc-800 shadow-sm flex items-center gap-5">
       <div className={`p-4 rounded-2xl ${color}`}>
         {icon}
       </div>

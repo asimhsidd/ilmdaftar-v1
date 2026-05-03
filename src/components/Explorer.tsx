@@ -18,7 +18,8 @@ import {
   MessageSquare,
   GripVertical,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Link2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -98,10 +99,18 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
   const [editingSharh, setEditingSharh] = useState<Sharh | null>(null);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [editBookTitle, setEditBookTitle] = useState('');
+  const [editBookAuthor, setEditBookAuthor] = useState('');
   const [editSharhTitle, setEditSharhTitle] = useState('');
   const [editSharhAuthor, setEditSharhAuthor] = useState('');
   const [activeScienceId, setActiveScienceId] = useState<number | null>(null);
   const [isSavingScienceOrder, setIsSavingScienceOrder] = useState(false);
+  const [showQuickCaptureInbox, setShowQuickCaptureInbox] = useState(false);
+  const [formattingDraft, setFormattingDraft] = useState<Fawaid | null>(null);
+  const [linkingNote, setLinkingNote] = useState<Fawaid | null>(null);
+  const [linkQuery, setLinkQuery] = useState('');
+  const [linkCandidates, setLinkCandidates] = useState<Fawaid[]>([]);
+  const [selectedLinkIds, setSelectedLinkIds] = useState<number[]>([]);
+  const [linkedItems, setLinkedItems] = useState<Fawaid[]>([]);
   const scienceOrderSnapshotRef = useRef<Science[] | null>(null);
   const pendingScienceOrderRef = useRef<number[] | null>(null);
   const { t, language } = useSettings();
@@ -116,6 +125,15 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
         console.error(e);
       }
       localStorage.removeItem('fawaid_explorer_open_faidah');
+    }
+
+    if (localStorage.getItem('fawaid_explorer_quick_capture_inbox') === 'true') {
+      setShowQuickCaptureInbox(true);
+      setView('fawaid');
+      setSelectedScience(null);
+      setSelectedBook(null);
+      setSelectedSharh(null);
+      localStorage.removeItem('fawaid_explorer_quick_capture_inbox');
     }
   }, []);
 
@@ -158,6 +176,9 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
 
   useEffect(() => {
     if (view === 'sciences') {
+      if (showQuickCaptureInbox) {
+        setShowQuickCaptureInbox(false);
+      }
       if (isSavingScienceOrder) return;
 
       const pendingScienceOrder = pendingScienceOrderRef.current;
@@ -188,10 +209,20 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
           setLoading(false);
         })
         .catch(() => setLoading(false));
+    } else if (view === 'fawaid' && showQuickCaptureInbox) {
+      setLoading(true);
+      fetch(`/api/fawaid?status=unformatted&includeUnformatted=true`, { headers: { 'Cache-Control': 'no-cache' } })
+        .then(res => res.ok ? res.json() : [])
+        .then(data => {
+          const fawaidList = Array.isArray(data) ? data : [];
+          setItems(fawaidList);
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
     } else if (view === 'fawaid' && selectedBook) {
       fetchFawaid();
     }
-  }, [view, selectedScience, selectedBook, selectedSharh, sciences, isSavingScienceOrder]);
+  }, [view, selectedScience, selectedBook, selectedSharh, sciences, isSavingScienceOrder, showQuickCaptureInbox]);
 
   const fetchFawaid = () => {
     if (!selectedBook) return;
@@ -218,6 +249,11 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
 
   const handleBack = () => {
     if (view === 'fawaid') {
+      if (showQuickCaptureInbox) {
+        setShowQuickCaptureInbox(false);
+        setView('sciences');
+        return;
+      }
       setView('books');
       setSelectedBook(null);
       setSelectedSharh(null);
@@ -235,6 +271,115 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
     if (!selectedBook) return;
     performCopy(items as Fawaid[]);
   };
+
+  const openLinkModal = async (note: Fawaid) => {
+    setLinkingNote(note);
+    setLinkQuery('');
+    setSelectedLinkIds([]);
+    setLinkCandidates([]);
+
+    try {
+      const res = await fetch(`/api/fawaid/${note.id}/connections`);
+      const data = res.ok ? await res.json() : [];
+      setLinkedItems(Array.isArray(data) ? data : []);
+    } catch {
+      setLinkedItems([]);
+    }
+  };
+
+  const refreshLinkedItems = async (noteId: number) => {
+    const res = await fetch(`/api/fawaid/${noteId}/connections`);
+    const data = res.ok ? await res.json() : [];
+    setLinkedItems(Array.isArray(data) ? data : []);
+  };
+
+  const searchForLinkCandidates = async () => {
+    if (!linkingNote) {
+      setLinkCandidates([]);
+      return;
+    }
+
+    const queryValue = linkQuery.trim();
+    const endpoint = queryValue.length >= 2
+      ? `/api/search/semantic?search=${encodeURIComponent(queryValue)}&mode=smart&includeUnformatted=true`
+      : '/api/fawaid?includeUnformatted=true';
+
+    const res = await fetch(endpoint);
+    const data = res.ok ? await res.json() : { results: [] };
+    const pool = Array.isArray(data) ? data : (data.results || []);
+    const results = pool.filter((x: Fawaid) => x.id !== linkingNote.id).slice(0, 80);
+    setLinkCandidates(results);
+  };
+
+  const connectSelected = async () => {
+    if (!linkingNote || selectedLinkIds.length === 0) return;
+    const res = await fetch(`/api/fawaid/${linkingNote.id}/connections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connectedIds: selectedLinkIds })
+    });
+    if (res.ok) {
+      await refreshLinkedItems(linkingNote.id);
+      setSelectedLinkIds([]);
+      if (showQuickCaptureInbox) {
+        const updated = await fetch(`/api/fawaid?status=unformatted&includeUnformatted=true`);
+        setItems(updated.ok ? await updated.json() : []);
+      } else {
+        fetchFawaid();
+      }
+    }
+  };
+
+  const jumpToLinkedFaidah = (item: Fawaid) => {
+    setShowQuickCaptureInbox(false);
+    setSelectedScience({ id: Number((item as any).science_id), name: (item as any).science_name });
+    setSelectedBook({
+      id: Number(item.book_id),
+      science_id: Number((item as any).science_id),
+      title: item.book_title || 'Book',
+      total_pages: 0
+    });
+    setSelectedSharh(item.sharh_id ? { id: Number(item.sharh_id), book_id: Number(item.book_id), title: (item as any).sharh_title || '' } : null);
+    setView('fawaid');
+    setExpandedNote(item);
+    setLinkingNote(null);
+  };
+
+  const openFormatNow = (note: Fawaid) => {
+    const scienceId = Number((note as any).science_id);
+    const bookId = Number(note.book_id);
+    const hasScience = Number.isFinite(scienceId) && scienceId > 0;
+    const hasBook = Number.isFinite(bookId) && bookId > 0;
+
+    if (hasScience) {
+      setSelectedScience({ id: scienceId, name: (note as any).science_name || '' });
+    } else {
+      setSelectedScience(null);
+    }
+
+    if (hasScience && hasBook) {
+      setSelectedBook({
+        id: bookId,
+        science_id: scienceId,
+        title: note.book_title || '',
+        total_pages: 0
+      });
+      setSelectedSharh(note.sharh_id ? { id: Number(note.sharh_id), book_id: bookId, title: note.sharh_title || '' } : null);
+    } else {
+      setSelectedBook(null);
+      setSelectedSharh(null);
+    }
+
+    setFormattingDraft(note);
+    setIsAddingFaidah(true);
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchForLinkCandidates();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [linkQuery, linkingNote?.id]);
 
   const handleDelete = async (id: number) => {
     if (!(await showModal({ type: 'confirm', title: t ? t('Confirm') : 'Confirm', message: t('Delete Fawaid Confirmation') }) === 'confirm')) return;
@@ -308,14 +453,16 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          title: editBookTitle.trim()
+          title: editBookTitle.trim(),
+          author: editBookAuthor.trim() || null
         })
       });
       if (!res.ok) throw new Error('Failed to rename book');
       
-      setItems(prev => prev.map(item => item.id === editingBook.id ? { ...item, title: editBookTitle.trim() } : item));
+      setItems(prev => prev.map(item => item.id === editingBook.id ? { ...item, title: editBookTitle.trim(), author: editBookAuthor.trim() || undefined } : item));
       setEditingBook(null);
       setEditBookTitle('');
+      setEditBookAuthor('');
     } catch (e) {
       console.error(e);
       await showModal({ type: 'alert', title: t ? t('Information') : 'Information', message: t('Error') });
@@ -659,7 +806,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
             >
               <h3 className="text-2xl font-serif font-bold mb-4 dark:text-white">{t('Add Science')}</h3>
               <input
@@ -667,7 +814,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                 value={newScienceName}
                 onChange={(e) => setNewScienceName(e.target.value)}
                 placeholder={t('Enter Science Name')}
-                className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 mb-6"
+                className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 mb-6"
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleAddScienceSubmit();
@@ -683,14 +830,14 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     setIsAddingScience(false);
                     setNewScienceName('');
                   }}
-                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
                 >
                   {t('Cancel')}
                 </button>
                 <button
                   onClick={handleAddScienceSubmit}
                   disabled={!newScienceName.trim()}
-                  className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('Save')}
                 </button>
@@ -713,7 +860,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
             >
               <h3 className="text-2xl font-serif font-bold mb-4 dark:text-white">{t('Edit Science')}</h3>
               <input
@@ -721,7 +868,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                 value={editScienceName}
                 onChange={(e) => setEditScienceName(e.target.value)}
                 placeholder={t('Enter Science Name')}
-                className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 mb-6"
+                className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 mb-6"
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') submitEditScience();
@@ -733,14 +880,14 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setEditingScience(null)}
-                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
                 >
                   {t('Cancel')}
                 </button>
                 <button
                   onClick={submitEditScience}
                   disabled={!editScienceName.trim() || editScienceName === editingScience.name}
-                  className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('Save')}
                 </button>
@@ -763,7 +910,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
             >
               <h3 className="text-2xl font-serif font-bold mb-4 dark:text-white">{t('Add Sharh')}</h3>
               
@@ -775,7 +922,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     value={newSharhTitle}
                     onChange={(e) => setNewSharhTitle(e.target.value)}
                     placeholder={t('Enter Sharh Name')}
-                    className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                     autoFocus
                   />
                 </div>
@@ -787,7 +934,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     value={newSharhAuthor}
                     onChange={(e) => setNewSharhAuthor(e.target.value)}
                     placeholder={t('Author Name')}
-                    className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                   />
                 </div>
               </div>
@@ -799,14 +946,14 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     setNewSharhTitle('');
                     setNewSharhAuthor('');
                   }}
-                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
                 >
                   {t('Cancel')}
                 </button>
                 <button
                   onClick={handleAddSharhSubmit}
                   disabled={!newSharhTitle.trim()}
-                  className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('Save')}
                 </button>
@@ -829,7 +976,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
             >
               <h3 className="text-2xl font-serif font-bold mb-4 dark:text-white">{t('Edit Sharh')}</h3>
               
@@ -841,7 +988,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     value={editSharhTitle}
                     onChange={(e) => setEditSharhTitle(e.target.value)}
                     placeholder={t('Enter Sharh Name')}
-                    className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                     autoFocus
                   />
                 </div>
@@ -853,7 +1000,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     value={editSharhAuthor}
                     onChange={(e) => setEditSharhAuthor(e.target.value)}
                     placeholder={t('Author Name')}
-                    className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                   />
                 </div>
               </div>
@@ -865,14 +1012,14 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     setEditSharhTitle('');
                     setEditSharhAuthor('');
                   }}
-                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
                 >
                   {t('Cancel')}
                 </button>
                 <button
                   onClick={submitEditSharh}
                   disabled={!editSharhTitle.trim()}
-                  className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('Save')}
                 </button>
@@ -895,7 +1042,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
             >
               <h3 className="text-2xl font-serif font-bold mb-4 dark:text-white">{t('Add Book')}</h3>
 
@@ -907,7 +1054,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     value={newBookTitle}
                     onChange={(e) => setNewBookTitle(e.target.value)}
                     placeholder={t('Enter Book Title')}
-                    className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleAddBookSubmit();
@@ -927,7 +1074,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     value={newBookAuthor}
                     onChange={(e) => setNewBookAuthor(e.target.value)}
                     placeholder={t('Author Name')}
-                    className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleAddBookSubmit();
                       if (e.key === 'Escape') {
@@ -947,14 +1094,14 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     setNewBookTitle('');
                     setNewBookAuthor('');
                   }}
-                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
                 >
                   {t('Cancel')}
                 </button>
                 <button
                   onClick={handleAddBookSubmit}
                   disabled={!newBookTitle.trim()}
-                  className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('Save')}
                 </button>
@@ -977,7 +1124,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
             >
               <h3 className="text-2xl font-serif font-bold mb-4 dark:text-white">{t('Edit Book')}</h3>
               
@@ -989,15 +1136,26 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     value={editBookTitle}
                     onChange={(e) => setEditBookTitle(e.target.value)}
                     placeholder={t('Enter Book Title')}
-                    className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') submitEditBook();
                       if (e.key === 'Escape') {
                         setEditingBook(null);
                         setEditBookTitle('');
+                        setEditBookAuthor('');
                       }
                     }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#8E8E8E] dark:text-gray-500 block mb-2">{t('Author')} ({t('Optional')})</label>
+                  <input
+                    type="text"
+                    value={editBookAuthor}
+                    onChange={(e) => setEditBookAuthor(e.target.value)}
+                    placeholder={t('Author Name')}
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
                   />
                 </div>
               </div>
@@ -1008,8 +1166,9 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                   onClick={() => {
                     setEditingBook(null);
                     setEditBookTitle('');
+                    setEditBookAuthor('');
                   }}
-                  className="px-4 py-2 px-6 rounded-xl text-sm font-bold text-[#8E8E8E] dark:text-gray-400 hover:text-[#5A5A40] dark:hover:text-zinc-300 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+                  className="px-4 py-2 px-6 rounded-xl text-sm font-bold text-[#8E8E8E] dark:text-gray-400 hover:text-[#18407B] dark:hover:text-zinc-300 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
                 >
                   {t('Cancel')}
                 </button>
@@ -1017,7 +1176,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                   type="button"
                   onClick={submitEditBook}
                   disabled={!editBookTitle.trim()}
-                  className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('Save')}
                 </button>
@@ -1027,9 +1186,9 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
         )}
       </AnimatePresence>
 
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          {view !== 'sciences' && (
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4 max-w-full">
+          {view !== 'sciences' && !showQuickCaptureInbox && (
             <button 
               onClick={handleBack}
               className="p-2 hover:bg-white dark:hover:bg-zinc-800 rounded-xl transition-all dark:text-white"
@@ -1037,49 +1196,50 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
-          <div>
-            <h2 className="text-3xl font-serif font-bold text-[#1A1A1A] dark:text-white">
+          <div className="min-w-0">
+            <h2 className="text-3xl font-serif font-bold text-[#1A1A1A] dark:text-white truncate" title={view === 'sciences' ? t('Sciences') : view === 'books' ? selectedScience?.name : (showQuickCaptureInbox ? 'Quick Capture Inbox' : (selectedSharh && selectedSharh.id !== -1 ? selectedSharh.title : selectedBook?.title))}>
               {view === 'sciences' && t('Sciences')}
               {view === 'books' && selectedScience?.name}
-              {view === 'fawaid' && selectedSharh && selectedSharh.id !== -1 ? selectedSharh.title : selectedBook?.title}
+              {view === 'fawaid' && (showQuickCaptureInbox ? 'Quick Capture Inbox' : (selectedSharh && selectedSharh.id !== -1 ? selectedSharh.title : selectedBook?.title))}
             </h2>
-            <nav className="flex items-center gap-2 text-sm text-[#8E8E8E] dark:text-gray-400 mt-1">
-              <span className="hover:text-[#5A5A40] dark:hover:text-zinc-300 cursor-pointer" onClick={() => { setView('sciences'); setSelectedScience(null); setSelectedBook(null); setSelectedSharh(null); }}>{t('Library')}</span>
-              {selectedScience && (
-                <>
-                  <ChevronRight className="w-3 h-3" />
-                  <span className="hover:text-[#5A5A40] dark:hover:text-zinc-300 cursor-pointer" onClick={() => { setView('books'); setSelectedBook(null); setSelectedSharh(null); }}>{selectedScience.name}</span>
-                </>
-              )}
-              {selectedBook && (
-                <>
-                  <ChevronRight className="w-3 h-3" />
-                  <span className="text-[#5A5A40] dark:text-zinc-300 aref-ruqaa-regular">{selectedBook.title}</span>
-                </>
-              )}
-              {selectedSharh && selectedSharh.id !== -1 && (
-                <>
-                  <ChevronRight className="w-3 h-3" />
-                  <span className="text-[#5A5A40] dark:text-zinc-300 aref-ruqaa-regular">{selectedSharh.title}</span>
-                </>
-              )}
-            </nav>
+            {!showQuickCaptureInbox && (
+              <nav className="flex items-center gap-2 text-sm text-[#8E8E8E] dark:text-gray-400 mt-1">
+                <span className="hover:text-[#18407B] dark:hover:text-zinc-300 cursor-pointer" onClick={() => { setView('sciences'); setSelectedScience(null); setSelectedBook(null); setSelectedSharh(null); }}>{t('Library')}</span>
+                {selectedScience && (
+                  <>
+                    <ChevronRight className="w-3 h-3" />
+                    <span className="hover:text-[#18407B] dark:hover:text-zinc-300 cursor-pointer montserrat-semibold" onClick={() => { setView('books'); setSelectedBook(null); setSelectedSharh(null); }}>{selectedScience.name}</span>
+                  </>
+                )}
+                {selectedBook && (
+                  <>
+                    <ChevronRight className="w-3 h-3" />
+                    <span className="text-[#18407B] dark:text-zinc-300 aref-ruqaa-regular">{selectedBook.title}</span>
+                  </>
+                )}
+                {selectedSharh && selectedSharh.id !== -1 && (
+                  <>
+                    <ChevronRight className="w-3 h-3" />
+                    <span className="text-[#18407B] dark:text-zinc-300 aref-ruqaa-regular">{selectedSharh.title}</span>
+                  </>
+                )}
+              </nav>
+            )}
           </div>
         </div>
-        
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {view === 'books' && (
             <button
               onClick={() => setIsAddingBook(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all"
+              className="flex items-center gap-2 px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all"
             >
               <Plus className="w-4 h-4" /> {t('Add Book')}
             </button>
           )}
 
-          {view === 'fawaid' && selectedBook && (
+          {view === 'fawaid' && selectedBook && !showQuickCaptureInbox && (
             <select
-              className="bg-white dark:bg-zinc-800 border border-[#E5E5E0] dark:border-zinc-700 text-sm font-bold text-[#1A1A1A] dark:text-white rounded-xl px-4 py-2 pr-8 hover:bg-[#F5F5F0] dark:hover:bg-zinc-700 transition-all outline-none cursor-pointer appearance-none bg-no-repeat"
+              className="bg-white dark:bg-zinc-800 border border-[#E5E7EB] dark:border-zinc-700 text-sm font-bold text-[#1A1A1A] dark:text-white rounded-xl px-4 py-2 pr-8 hover:bg-[#F5F5F7] dark:hover:bg-zinc-700 transition-all outline-none cursor-pointer appearance-none bg-no-repeat"
               style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%238E8E8E%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")', backgroundPosition: 'right 0.5rem center', backgroundSize: '1em' }}
               value={selectedSharh ? selectedSharh.id : ""}
               onChange={(e) => {
@@ -1106,20 +1266,20 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
             </select>
           )}
 
-          {selectedBook && view === 'fawaid' && (
+          {selectedBook && view === 'fawaid' && !showQuickCaptureInbox && (
             <button
               onClick={handleAddFaidah}
-              className="flex items-center gap-2 px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all"
+              className="flex items-center gap-2 px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all"
             >
               <Plus className="w-4 h-4" /> {t('Add Fāʾidah')}
             </button>
           )}
 
-          {view === 'fawaid' && items.length > 0 && (
+          {view === 'fawaid' && items.length > 0 && !showQuickCaptureInbox && (
             <>
               <button 
                 onClick={copyAllFromBook}
-                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-800 border border-[#E5E5E0] dark:border-zinc-700 rounded-xl text-sm font-bold hover:bg-[#F5F5F0] dark:hover:bg-zinc-700 transition-all dark:text-white"
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-800 border border-[#E5E7EB] dark:border-zinc-700 rounded-xl text-sm font-bold hover:bg-[#F5F5F7] dark:hover:bg-zinc-700 transition-all dark:text-white"
               >
                 <Copy className="w-4 h-4" /> {t('Copy All')}
               </button>
@@ -1130,7 +1290,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
 
       {loading ? (
         <div className="flex justify-center py-20">
-          <Loader2 className="w-10 h-10 text-[#5A5A40] animate-spin" />
+          <Loader2 className="w-10 h-10 text-[#18407B] animate-spin" />
         </div>
       ) : view === 'sciences' ? (
         <DndContext
@@ -1141,7 +1301,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
           onDragEnd={handleScienceDragEnd}
         >
           <SortableContext items={scienceItems.map(item => item.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-[1fr]">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 auto-rows-[1fr]">
               {scienceItems.map((item) => (
                 <div key={item.id} className="h-full">
                   <SortableScienceCard
@@ -1181,7 +1341,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
           </DragOverlay>
         </DndContext>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className={`grid gap-4 md:gap-6 ${view === 'books' ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
           <AnimatePresence mode="popLayout">
             {items?.map((item, idx) => (
               <motion.div
@@ -1195,7 +1355,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                   <BookCard 
                     book={item} 
                     onClick={() => { setSelectedBook(item); setSelectedSharh(null); setView('fawaid'); }} 
-                    onEdit={() => { setEditingBook(item); setEditBookTitle(item.title); }}
+                    onEdit={() => { setEditingBook(item); setEditBookTitle(item.title); setEditBookAuthor(item.author || ''); }}
                     onDelete={() => handleDeleteBook(item.id)}
                     onMoveUp={() => handleMoveBook(idx, 'up')}
                     onMoveDown={() => handleMoveBook(idx, 'down')}
@@ -1211,6 +1371,9 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     onDelete={() => handleDelete(item.id)}
                     onCopy={() => copyIndividual(item)} 
                     onExpand={() => setExpandedNote(item)}
+                    onLink={() => openLinkModal(item)}
+                    onFormatNow={showQuickCaptureInbox ? () => openFormatNow(item) : undefined}
+                    isQuickCaptureInbox={showQuickCaptureInbox}
                     t={t}
                   />
                 )}
@@ -1233,7 +1396,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+              className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
             >
               <h3 className="text-2xl font-serif font-bold mb-4 dark:text-white">{t('Edit Note')}</h3>
               
@@ -1245,7 +1408,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     <input 
                       value={note.title}
                       onChange={e => setItems(items.map(i => i.id === editingId ? {...i, title: e.target.value} : i))}
-                      className="aref-ruqaa-regular text-2xl w-full border-b border-[#E5E5E0] dark:border-zinc-700 pb-2 focus:outline-none focus:border-[#5A5A40] bg-transparent dark:text-white"
+                      className="aref-ruqaa-regular text-2xl w-full border-b border-[#E5E7EB] dark:border-zinc-700 pb-2 focus:outline-none focus:border-[#6197EC] bg-transparent dark:text-white"
                       placeholder={t('Title Placeholder')}
                       dir="auto"
                     />
@@ -1259,7 +1422,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     <textarea 
                       value={note.extra_notes || ''}
                       onChange={e => setItems(items.map(i => i.id === editingId ? {...i, extra_notes: e.target.value} : i))}
-                      className="w-full h-16 resize-none text-lg scheherazade-new-regular leading-relaxed focus:outline-none bg-[#F5F5F0] dark:bg-zinc-800 dark:text-gray-300 p-2 rounded-md"
+                      className="w-full h-16 resize-none text-lg scheherazade-new-regular leading-relaxed focus:outline-none bg-[#F5F5F7] dark:bg-zinc-800 dark:text-gray-300 p-2 rounded-md"
                       placeholder={t('Enter Extra Notes')}
                       dir="auto"
                     />
@@ -1267,7 +1430,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                       <input
                         value={note.author || ''}
                         onChange={e => setItems(items.map(i => i.id === editingId ? {...i, author: e.target.value} : i))}
-                        className="w-full text-xs font-bold bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white px-3 py-2 rounded-md"
+                        className="w-full text-xs font-bold bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white px-3 py-2 rounded-md"
                         placeholder={t('Author Placeholder')}
                       />
                       <div className="flex gap-2">
@@ -1275,21 +1438,21 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                           type="text"
                           value={note.volume_number || ''}
                           onChange={e => setItems(items.map(i => i.id === editingId ? {...i, volume_number: e.target.value} : i))}
-                          className="flex-1 min-w-0 text-xs font-bold bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white px-2 py-1 rounded-md"
+                          className="flex-1 min-w-0 text-xs font-bold bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white px-2 py-1 rounded-md"
                           placeholder={t('Volume')}
                         />
                         <input
                           type="number"
                           value={note.page_number || ''}
                           onChange={e => setItems(items.map(i => i.id === editingId ? {...i, page_number: parseInt(e.target.value)} : i))}
-                          className="flex-1 min-w-0 text-xs font-bold bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white px-2 py-1 rounded-md"
+                          className="flex-1 min-w-0 text-xs font-bold bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white px-2 py-1 rounded-md"
                           placeholder={t('Page')}
                         />
                         <input
                           type="text"
                           value={note.tabah || ''}
                           onChange={e => setItems(items.map(i => i.id === editingId ? {...i, tabah: e.target.value} : i))}
-                          className="flex-1 min-w-0 text-xs font-bold bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white px-2 py-1 rounded-md"
+                          className="flex-1 min-w-0 text-xs font-bold bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white px-2 py-1 rounded-md"
                           placeholder={t('Edition')}
                         />
                       </div>
@@ -1301,7 +1464,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setEditingId(null)}
-                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
                 >
                   {t('Cancel')}
                 </button>
@@ -1311,7 +1474,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                     if (note) await handleUpdate(note);
                     setEditingId(null);
                   }}
-                  className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all"
+                  className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all"
                 >
                   {t('Save')}
                 </button>
@@ -1322,7 +1485,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
       </AnimatePresence>
 
       {items.length === 0 && !loading && (
-        <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-[#E5E5E0] dark:border-zinc-800 border-dashed">
+        <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-[#E5E7EB] dark:border-zinc-800 border-dashed">
           <p className="text-[#8E8E8E] dark:text-gray-500">{t('No items found')}</p>
         </div>
       )}
@@ -1375,7 +1538,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                 </div>
                 <button 
                   onClick={() => setExpandedNote(null)}
-                  className="absolute top-0 right-0 p-2 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 rounded-full transition-all dark:text-white"
+                  className="absolute top-0 right-0 p-2 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 rounded-full transition-all dark:text-white"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -1395,10 +1558,10 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
                 )}
               </div>
 
-              <div className="mt-8 pt-6 border-t border-[#E5E5E0] dark:border-zinc-800 flex justify-between items-center">
+              <div className="mt-8 pt-6 border-t border-[#E5E7EB] dark:border-zinc-800 flex justify-between items-center">
                 <div className="flex gap-2">
                   {expandedNote.tags?.map((tag, i) => (
-                    <span key={i} className="text-xs font-bold bg-[#F5F5F0] dark:bg-zinc-800 text-[#8E8E8E] dark:text-gray-400 px-3 py-1 rounded-full">
+                    <span key={i} className="text-xs font-bold bg-[#F5F5F7] dark:bg-zinc-800 text-[#8E8E8E] dark:text-gray-400 px-3 py-1 rounded-full">
                       #{tag}
                     </span>
                   ))}
@@ -1421,7 +1584,7 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
 
       {/* Add Faidah Modal */}
       <AnimatePresence>
-        {isAddingFaidah && selectedScience && selectedBook && (
+        {isAddingFaidah && ((selectedScience && selectedBook) || formattingDraft) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1435,21 +1598,116 @@ export default function Explorer({ sciences, onUpdate }: { sciences: Science[], 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-[#E5E5E0] dark:border-zinc-800 p-6"
+              className="bg-white dark:bg-zinc-900 rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-[#E5E7EB] dark:border-zinc-800 p-6"
             >
               <Capture
                 sciences={sciences}
-                prefilledScience={selectedScience}
-                prefilledBook={selectedBook}
+                prefilledScience={selectedScience || undefined}
+                prefilledBook={selectedBook || undefined}
                 prefilledSharh={selectedSharh}
+                prefilledDraft={formattingDraft ? {
+                  title: formattingDraft.title || '',
+                  content: formattingDraft.content || '',
+                  extra_notes: formattingDraft.extra_notes || '',
+                  author: formattingDraft.author || '',
+                  pageNumber: formattingDraft.page_number ? String(formattingDraft.page_number) : '',
+                  volumeNumber: formattingDraft.volume_number || '',
+                  tabah: formattingDraft.tabah || '',
+                  tags: formattingDraft.tags || []
+                } : undefined}
+                editingFawaidId={formattingDraft?.id || null}
                 isModal={true}
                 onSave={() => {
                   setIsAddingFaidah(false);
-                  fetchFawaid();
+                  setFormattingDraft(null);
+                  if (showQuickCaptureInbox) {
+                    fetch('/api/fawaid?status=unformatted&includeUnformatted=true', { headers: { 'Cache-Control': 'no-cache' } })
+                      .then(res => res.ok ? res.json() : [])
+                      .then(data => setItems(Array.isArray(data) ? data : []));
+                  } else {
+                    fetchFawaid();
+                  }
                   if (onUpdate) onUpdate();
                 }}
-                onCancel={() => setIsAddingFaidah(false)}
+                onCancel={() => {
+                  setIsAddingFaidah(false);
+                  setFormattingDraft(null);
+                }}
               />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {linkingNote && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-zinc-900 rounded-3xl p-6 max-w-3xl w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-serif font-bold dark:text-white">Linked Fawāʾid</h3>
+                <button onClick={() => setLinkingNote(null)} className="p-2 rounded hover:bg-[#F5F5F7] dark:hover:bg-zinc-800">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div className="space-y-3">
+                  <div className="text-xs font-bold uppercase tracking-wider text-[#8E8E8E]">Search and link</div>
+                  <input
+                    value={linkQuery}
+                    onChange={e => setLinkQuery(e.target.value)}
+                    placeholder="Search all fawāʾid (leave empty to browse)..."
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white rounded-xl px-4 py-3"
+                  />
+                  <div className="max-h-56 overflow-y-auto space-y-2">
+                    {linkCandidates.map(c => (
+                      <label key={c.id} className="flex items-start gap-2 p-2 border border-[#E5E7EB] dark:border-zinc-800 rounded-lg">
+                        <input
+                          type="checkbox"
+                          checked={selectedLinkIds.includes(c.id)}
+                          onChange={() => setSelectedLinkIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])}
+                        />
+                        <div>
+                          <div className="text-sm font-bold dark:text-white">{c.title || 'Untitled'}</div>
+                          <div className="text-xs text-[#8E8E8E] dark:text-gray-500">{String(c.content || '').slice(0, 100)}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    onClick={connectSelected}
+                    className="w-full px-3 py-2 rounded-xl bg-[#6197EC] text-white text-sm font-bold disabled:opacity-50"
+                    disabled={selectedLinkIds.length === 0}
+                  >
+                    Connect selected ({selectedLinkIds.length})
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="text-xs font-bold uppercase tracking-wider text-[#8E8E8E] pt-2">Already linked</div>
+                  <div className="max-h-28 overflow-y-auto space-y-2">
+                    {linkedItems.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => jumpToLinkedFaidah(item)}
+                        className="w-full text-left p-2 rounded border border-[#E5E7EB] dark:border-zinc-800 text-sm dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-zinc-800"
+                      >
+                        {item.title || `#${item.id}`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -1518,7 +1776,7 @@ function ScienceCard({
 }) {
   return (
     <div
-      className="w-full bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-[#E5E5E0] dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-[#5A5A40] dark:hover:border-zinc-600 transition-all text-left group relative flex flex-col h-full"
+      className="w-full bg-white dark:bg-zinc-900 p-5 md:p-8 rounded-3xl border border-[#E5E7EB] dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-[#6197EC] dark:hover:border-zinc-600 transition-all text-left group relative flex flex-col h-full"
     >
       {/* Drag Handle - positioned at top left */}
       <div
@@ -1534,23 +1792,23 @@ function ScienceCard({
       <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={(e) => { e.stopPropagation(); onEdit(); }}
-          className="p-2 text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 bg-[#F5F5F0] dark:bg-zinc-800 rounded-lg"
+          className="p-2 text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 bg-[#F5F5F7] dark:bg-zinc-800 rounded-lg"
           title={t('Edit')}
         >
           <Edit2 className="w-4 h-4" />
         </button>
       </div>
       <button onClick={onClick} className="w-full text-left flex-1">
-        <div className="p-4 bg-[#F5F5F0] dark:bg-zinc-800 rounded-2xl w-fit mb-6 group-hover:bg-[#5A5A40] group-hover:text-white transition-all">
+        <div className="p-4 bg-[#F5F5F7] dark:bg-zinc-800 rounded-2xl w-fit mb-6 group-hover:bg-[#6197EC] group-hover:text-white transition-all">
           <Library className="w-8 h-8 dark:text-white group-hover:text-white" />
         </div>
-        <h3 className="text-xl font-serif font-bold mb-1 dark:text-white pr-24">{science.name}</h3>
+        <h3 className="text-lg md:text-xl montserrat-bold mb-1 dark:text-white pr-8 md:pr-24">{science.name}</h3>
         <p className="text-sm text-[#8E8E8E] dark:text-gray-500">{t('Explore Description')}</p>
       </button>
       <div className="mt-4 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="p-2 text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-300 bg-[#F5F5F0] dark:bg-zinc-800 rounded-lg"
+          className="p-2 text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-300 bg-[#F5F5F7] dark:bg-zinc-800 rounded-lg"
           title={t('Delete')}
         >
           <Trash2 className="w-4 h-4" />
@@ -1565,7 +1823,7 @@ function AddScienceCard({ onClick, t }: { onClick: () => void, t: any }) {
     <button
       onClick={onClick}
       type="button"
-      className="w-full bg-gradient-to-br from-[#5A5A40] to-[#4A4A30] dark:from-[#6A6A50] dark:to-[#5A5A40] p-8 rounded-3xl border-2 border-dashed border-[#8A8A70] dark:border-[#7A7A60] shadow-sm hover:shadow-lg hover:border-white/40 dark:hover:border-white/30 transition-all text-left group relative flex flex-col h-full items-center justify-center min-h-[200px]"
+      className="w-full bg-gradient-to-br from-[#6197EC] to-[#4C81D9] dark:from-[#7567EE] dark:to-[#6197EC] p-5 md:p-8 rounded-3xl border-2 border-dashed border-[#A69DF4] dark:border-[#8D82F1] shadow-sm hover:shadow-lg hover:border-white/40 dark:hover:border-white/30 transition-all text-left group relative flex flex-col h-full items-center justify-center min-h-[200px]"
     >
       <div className="p-4 bg-white/20 dark:bg-white/15 rounded-2xl w-fit mb-4 group-hover:bg-white/30 dark:group-hover:bg-white/25 transition-all">
         <Plus className="w-8 h-8 text-white" />
@@ -1601,7 +1859,7 @@ function BookCard({
   return (
     <div 
       onClick={onClick}
-      className="w-full bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-[#E5E5E0] dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-[#5A5A40] dark:hover:border-zinc-600 transition-all text-left group flex flex-col h-full cursor-pointer relative"
+      className="w-full bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-[#E5E7EB] dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-[#6197EC] dark:hover:border-zinc-600 transition-all text-left group flex flex-col h-full cursor-pointer relative"
     >
       <div className="flex justify-between items-start mb-4">
         <div className="p-3 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500 rounded-xl">
@@ -1611,7 +1869,7 @@ function BookCard({
           <button 
             onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
             disabled={isFirst}
-            className="p-2 text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 bg-[#F5F5F0] dark:bg-zinc-800 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-2 text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 bg-[#F5F5F7] dark:bg-zinc-800 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
             title={t('Move Up')}
           >
             <ArrowUp className="w-4 h-4" />
@@ -1619,7 +1877,7 @@ function BookCard({
           <button 
             onClick={(e) => { e.stopPropagation(); onMoveDown(); }}
             disabled={isLast}
-            className="p-2 text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 bg-[#F5F5F0] dark:bg-zinc-800 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-2 text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 bg-[#F5F5F7] dark:bg-zinc-800 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
             title={t('Move Down')}
           >
             <ArrowDown className="w-4 h-4" />
@@ -1630,7 +1888,7 @@ function BookCard({
       <div className="flex items-center justify-between mt-auto">
         <div className="flex items-center gap-2 text-xs text-[#8E8E8E] dark:text-gray-500">
           <FileText className="w-3 h-3" />
-          <span>{t('Fawaid')}</span>
+          <span>{book.author || t('Unknown Author')}</span>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button 
@@ -1663,7 +1921,7 @@ function SharhCard({ sharh, onClick, onDelete, onRename, t, isGeneral }: { sharh
   return (
     <div 
       onClick={onClick}
-      className="w-full bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-[#E5E5E0] dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-[#5A5A40] dark:hover:border-zinc-600 transition-all text-left group flex flex-col h-full cursor-pointer relative"
+      className="w-full bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-[#E5E7EB] dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-[#6197EC] dark:hover:border-zinc-600 transition-all text-left group flex flex-col h-full cursor-pointer relative"
     >
       <div className="flex justify-between items-start mb-4">
         <div className={`p-3 ${isGeneral ? 'bg-gray-50 dark:bg-zinc-800 text-gray-600 dark:text-gray-400' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-500'} rounded-xl`}>
@@ -1712,6 +1970,9 @@ function FawaidCard({
   onDelete,
   onCopy,
   onExpand,
+  onLink,
+  onFormatNow,
+  isQuickCaptureInbox,
   t
 }: { 
   fawaid: Fawaid, 
@@ -1719,14 +1980,17 @@ function FawaidCard({
   onDelete: () => void,
   onCopy: () => void,
   onExpand: () => void,
+  onLink: () => void,
+  onFormatNow?: () => void,
+  isQuickCaptureInbox?: boolean,
   t: any
 }) {
   return (
-    <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-[#E5E5E0] dark:border-zinc-800 shadow-sm flex flex-col h-full group hover:border-[#5A5A40] dark:hover:border-zinc-600 transition-all">
+    <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-[#E5E7EB] dark:border-zinc-800 shadow-sm flex flex-col h-full group hover:border-[#6197EC] dark:hover:border-zinc-600 transition-all">
       <div className="flex justify-between items-start mb-4">
         <div className="flex gap-1">
         </div>
-        <span className="text-[10px] font-bold bg-[#F5F5F0] dark:bg-zinc-800 text-[#5A5A40] dark:text-zinc-300 px-2 py-1 rounded-md">
+        <span className="text-[10px] font-bold bg-[#F5F5F7] dark:bg-zinc-800 text-[#18407B] dark:text-zinc-300 px-2 py-1 rounded-md">
           {fawaid.reference || [
             fawaid.tabah ? `${fawaid.tabah}` : '',
             fawaid.volume_number ? `${t('Volume')} ${fawaid.volume_number}` : '',
@@ -1743,46 +2007,92 @@ function FawaidCard({
 
       <div className="flex flex-wrap gap-1 mb-6">
         {fawaid.tags?.map((tag, i) => (
-          <span key={i} className="text-[9px] font-bold uppercase tracking-tighter bg-[#F5F5F0] dark:bg-zinc-800 text-[#8E8E8E] dark:text-gray-400 px-2 py-0.5 rounded-full">
+          <span key={i} className="text-[9px] font-bold uppercase tracking-tighter bg-[#F5F5F7] dark:bg-zinc-800 text-[#8E8E8E] dark:text-gray-400 px-2 py-0.5 rounded-full">
             #{tag}
           </span>
         ))}
       </div>
 
-      <div className="flex gap-2 border-t border-[#F5F5F0] dark:border-zinc-800 pt-4 mt-auto">
-        <button 
-          onClick={onCopy}
-          className="p-2 text-[#5A5A40] dark:text-zinc-400 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 rounded-xl transition-all"
-          title={t('Copy')}
-        >
-          <Copy className="w-4 h-4" />
-        </button>
-        <button 
-          onClick={onEdit}
-          className="p-2 text-[#5A5A40] dark:text-zinc-400 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 rounded-xl transition-all"
-          title={t('Edit')}
-        >
-          <Edit2 className="w-4 h-4" />
-        </button>
-        <button 
-          onClick={onExpand}
-          className="p-2 text-[#5A5A40] dark:text-zinc-400 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 rounded-xl transition-all"
-          title={t('Open')}
-        >
-          <Maximize2 className="w-4 h-4" />
-        </button>
-        <div className="flex-1" />
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
-          title={t('Delete')}
-        >
-          <Trash2 className="w-4 h-4 pointer-events-none" />
-        </button>
-      </div>
+      {isQuickCaptureInbox ? (
+        <div className="flex gap-2 border-t border-[#F5F5F7] dark:border-zinc-800 pt-4 mt-auto">
+          {onFormatNow && (
+            <button
+              onClick={onFormatNow}
+              className="flex-1 px-3 py-2 text-xs font-bold rounded-xl bg-[#6197EC] text-white hover:bg-[#4C81D9] transition-all"
+              title="Format now"
+            >
+              Format now
+            </button>
+          )}
+          <button 
+            onClick={onExpand}
+            className="p-2 text-[#18407B] dark:text-zinc-400 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 rounded-xl transition-all"
+            title={t('Open')}
+          >
+            <Maximize2 className="w-4 h-4" />
+          </button>
+          <button 
+            onClick={onDelete}
+            className="p-2 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+            title={t('Delete')}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2 border-t border-[#F5F5F7] dark:border-zinc-800 pt-4 mt-auto">
+          {onFormatNow && (
+            <button
+              onClick={onFormatNow}
+              className="flex-1 px-3 py-2 text-xs font-bold rounded-xl bg-[#6197EC] text-white hover:bg-[#4C81D9] transition-all"
+              title="Format now"
+            >
+              Format now
+            </button>
+          )}
+          <button 
+            onClick={onExpand}
+            className="p-2 text-[#18407B] dark:text-zinc-400 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 rounded-xl transition-all"
+            title={t('Open')}
+          >
+            <Maximize2 className="w-4 h-4" />
+          </button>
+          <>
+            <button 
+              onClick={onCopy}
+              className="p-2 text-[#18407B] dark:text-zinc-400 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 rounded-xl transition-all"
+              title={t('Copy')}
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={onEdit}
+              className="p-2 text-[#18407B] dark:text-zinc-400 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 rounded-xl transition-all"
+              title={t('Edit')}
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onLink}
+              className="p-2 text-[#18407B] dark:text-zinc-400 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 rounded-xl transition-all"
+              title="Link Fāʾidah"
+            >
+              <Link2 className="w-4 h-4" />
+            </button>
+          </>
+          <div className="flex-1" />
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+            title={t('Delete')}
+          >
+            <Trash2 className="w-4 h-4 pointer-events-none" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

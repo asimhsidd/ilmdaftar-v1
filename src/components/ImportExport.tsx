@@ -29,7 +29,6 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
   const [pdfFilters, setPdfFilters] = useState({ scienceId: '', bookId: '', author: '' });
   const [pdfTitle, setPdfTitle] = useState('');
   const [includePdfHeader, setIncludePdfHeader] = useState(true);
-  const [includePdfWatermark, setIncludePdfWatermark] = useState(true);
   const [driveStatus, setDriveStatus] = useState<boolean>(false);
   const [books, setBooks] = useState<Book[]>([]);
   const [authors, setAuthors] = useState<string[]>([]);
@@ -43,6 +42,25 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  };
+
+  const formatSourceLabel = (f: Fawaid) => {
+    const source: any = (f as any).source;
+    if (!source || source.type === 'other') {
+      return `${f.book_title || ''}${f.reference ? ` (${f.reference})` : ''}`.trim() || 'Other';
+    }
+    if (source.type === 'book') {
+      const name = source.book?.name || f.book_title || 'Book';
+      const author = source.book?.author ? `, ${source.book.author}` : '';
+      const page = source.book?.page ? ` p.${source.book.page}` : '';
+      return `Book: ${name}${author}${page}`;
+    }
+    if (source.type === 'youtube') {
+      const url = source.youtube?.url || 'YouTube';
+      const ts = source.youtube?.timestamp ? ` @ ${source.youtube.timestamp}` : '';
+      return `YouTube: ${url}${ts}`;
+    }
+    return 'Other';
   };
 
   useEffect(() => {
@@ -60,6 +78,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
       if (exportFilters.bookId) params.append('bookId', exportFilters.bookId);
       if (exportFilters.author) params.append('author', exportFilters.author);
       const res = await fetch(`/api/fawaid?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch data for export');
       const data: Fawaid[] = await res.json();
 
       let content = '';
@@ -71,25 +90,25 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
         mimeType = 'application/json';
         extension = 'json';
       } else if (exportFilters.format === 'csv') {
-        const csvHeader = 'title,content,book_title,science_name,reference,author,tags,extra_notes,language,created_at';
+        const csvHeader = 'title,content,book_title,science_name,reference,source,author,tags,extra_notes,language,status,created_at';
         const csvRows = data.map(f => {
           const esc = (s: string) => `"${(s || '').replace(/"/g, '""')}"`;
           return [
             esc(f.title), esc(f.content), esc(f.book_title || ''), esc(f.science_name || ''),
-            esc(f.reference || ''), esc(f.author || ''),
+            esc(f.reference || ''), esc(formatSourceLabel(f)), esc(f.author || ''),
             esc((f.tags || []).join('; ')), esc(f.extra_notes || ''),
-            esc(f.language || 'arabic'), esc(f.created_at || '')
+            esc(f.language || 'arabic'), esc((f as any).status || 'formatted'), esc(f.created_at || '')
           ].join(',');
         });
         content = [csvHeader, ...csvRows].join('\n');
         mimeType = 'text/csv';
         extension = 'csv';
       } else if (exportFilters.format === 'markdown') {
-        content = data.map(f => `## ${f.title || t('Untitled')}\n\n${f.content}\n\n**${t('Source')}:** ${f.book_title}${f.reference ? ` (${f.reference})` : ''}\n\n${t('Tags')}: ${f.tags?.join(', ')}`).join('\n\n---\n\n');
+        content = data.map(f => `## ${f.title || t('Untitled')}\n\n${f.content}\n\n**${t('Source')}:** ${formatSourceLabel(f)}\n\n${t('Tags')}: ${f.tags?.join(', ')}`).join('\n\n---\n\n');
         mimeType = 'text/markdown';
         extension = 'md';
       } else {
-        content = data.map(f => `${f.title}\n${f.content}\n[${f.book_title}${f.reference ? ' / ' + f.reference : ''}]`).join('\n\n-------------------\n\n');
+        content = data.map(f => `${f.title}\n${f.content}\n[${formatSourceLabel(f)}]`).join('\n\n-------------------\n\n');
         mimeType = 'text/plain';
         extension = 'txt';
       }
@@ -206,6 +225,42 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
     }
   };
 
+  const handleUndoLastImport = async () => {
+    const res = await showModal({
+      type: 'confirm',
+      title: 'Undo Last Import',
+      message: 'Are you sure you want to undo the most recent import? This action is permanent.',
+      confirmText: 'Undo Import',
+      cancelText: 'Cancel'
+    });
+    if (res !== 'confirm') return;
+
+    try {
+      const fetchRes = await fetch('/api/import/undo', { method: 'DELETE' });
+      const data = await fetchRes.json();
+      if (data.success) {
+        await showModal({
+          type: 'alert',
+          title: 'Undo Successful',
+          message: `Removed ${data.deletedCount} items.`
+        });
+        if (onUpdate) onUpdate();
+      } else {
+        await showModal({
+          type: 'alert',
+          title: 'Undo Failed',
+          message: data.error || 'Failed to undo import.'
+        });
+      }
+    } catch {
+      await showModal({
+        type: 'alert',
+        title: 'Error',
+        message: 'Network or connection error while undoing the import.'
+      });
+    }
+  };
+
   // === PDF ===
   const handleGeneratePDF = async () => {
     setLoading(true);
@@ -222,10 +277,11 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
         return;
       }
 
+      // Use the user's title or a sensible default for the PDF filename
+      const pdfFilename = (pdfTitle.trim() || "My Fawaid") + " - IlmDaftar";
+
       const notesHtml = data.map((f, idx) => {
-          let sourceText = f.book_title || '';
-          if (f.sharh_title) sourceText += ` - ${f.sharh_title}`;
-          if (f.page_number) sourceText += ` (p. ${f.page_number})`;
+          const sourceText = formatSourceLabel(f);
           return `
             <article class="note">
               <h2 dir="auto" style="font-family: 'Aref Ruqaa', serif; font-weight: 400;">${idx + 1}. ${escapeHtml(f.title || t('Untitled Note'))}</h2>
@@ -243,9 +299,9 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
         <head>
           <meta charset="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>${escapeHtml(pdfTitle.trim() || t('Import / Export'))}</title>
+          <title>${escapeHtml(pdfFilename)}</title>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Scheherazade+New:wght@400;600;700&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Aref+Ruqaa:wght@400;700&family=Scheherazade+New:wght@400;600;700&display=swap');
             
             :root {
               --text: #1A1A1A;
@@ -259,7 +315,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               padding: 0;
               background: var(--bg);
               color: var(--text);
-              font-family: "Scheherazade New", serif;
+              font-family: "Montserrat", "Scheherazade New", serif;
               -webkit-font-smoothing: antialiased;
               text-rendering: optimizeLegibility;
             }
@@ -277,7 +333,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               font-size: 30px;
               line-height: 1.2;
               letter-spacing: 0.2px;
-              font-family: "Aref Ruqaa", serif;
+              font-family: "Montserrat", "Aref Ruqaa", serif;
               font-weight: 400;
             }
             .meta {
@@ -295,7 +351,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               margin: 0 0 10px;
               font-size: 22px;
               line-height: 1.4;
-              font-family: "Aref Ruqaa", serif;
+              font-family: "Montserrat", "Aref Ruqaa", serif;
               font-weight: 400;
             }
             .content {
@@ -304,7 +360,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               line-height: 1.9;
               white-space: pre-wrap;
               color: #1A1A1A;
-              font-family: "Scheherazade New", serif;
+              font-family: "Montserrat", "Scheherazade New", serif;
               font-weight: 400;
             }
             .extra {
@@ -328,12 +384,47 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               border-top: 1px solid var(--line);
               margin: 2px 0 0;
             }
+
+            /* Full-page diagonal watermark */
+            .watermark-overlay {
+              position: fixed;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              pointer-events: none;
+              z-index: 9999;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+            }
+            .watermark-inner {
+              transform: rotate(-35deg);
+              opacity: 0.15;
+              text-align: center;
+              white-space: nowrap;
+            }
+            .watermark-inner img.wm-logo {
+              width: 100px;
+              height: 100px;
+              display: block;
+              margin: 0 auto 12px;
+              object-fit: contain;
+            }
+            .watermark-inner .wm-text {
+              font-family: 'Montserrat', 'Arial', sans-serif;
+              font-size: 42px;
+              font-weight: 900;
+              color: #6197EC;
+              letter-spacing: 3px;
+            }
+
             @media print {
               @page {
                 size: auto;
-                margin: 20mm 15mm 25mm 15mm; /* Top, Right, Bottom, Left margins for every page */
+                margin: 20mm 15mm 25mm 15mm;
               }
-              /* Standard CSS for page numbers (works in some browsers like Safari) */
               @page {
                 @bottom-center {
                   content: counter(page);
@@ -343,7 +434,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                 }
               }
               body {
-                padding: 0; /* Removed body padding, using @page margin instead */
+                padding: 0;
               }
               .page {
                 max-width: none;
@@ -354,24 +445,29 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               .note h2 { font-size: 18px; }
               .content { font-size: 16px; }
               .source { font-size: 10px; }
+              .watermark-overlay {
+                position: fixed;
+                display: flex;
+              }
             }
           </style>
         </head>
         <body>
+          <div class="watermark-overlay">
+            <div class="watermark-inner">
+              <img src="${window.location.origin}/logo.png" class="wm-logo" alt="Logo" />
+              <div class="wm-text">'IlmDaftar</div>
+            </div>
+          </div>
           <main class="page">
             ${includePdfHeader ? `
             <div class="header-container">
-              <h1 dir="auto">${escapeHtml(pdfTitle.trim() || t('Import / Export'))}</h1>
+
+              <h1 dir="auto">${escapeHtml(pdfTitle.trim() || "My Fawa'id")}</h1>
               <p class="meta" dir="auto">${escapeHtml(`${data.length} ${t('Notes')} | ${new Date().toLocaleDateString()}`)}</p>
             </div>
             ` : ''}
             ${notesHtml}
-
-            ${includePdfWatermark ? `
-              <div style="page-break-after: avoid; margin-top: auto; padding-top: 40px; text-align: left; color: #a1a1aa; font-family: sans-serif; font-size: 10px; font-weight: 500; font-style: italic; opacity: 0.7;">
-                This PDF was created by 'IlmDaftar'
-              </div>
-            ` : ''}
           </main>
         </body>
         </html>
@@ -448,10 +544,10 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
   };
 
   const tabClass = (section: Section) =>
-    `flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+    `flex items-center justify-center text-center gap-1.5 md:gap-2 px-2 sm:px-4 md:px-6 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all flex-1 md:flex-none ${
       activeSection === section
-        ? 'bg-[#5A5A40] dark:bg-zinc-700 text-white shadow-md'
-        : 'text-[#8E8E8E] dark:text-gray-400 hover:bg-[#F5F5F0] dark:hover:bg-zinc-800'
+        ? 'bg-[#6197EC] dark:bg-zinc-700 text-white shadow-md'
+        : 'text-[#8E8E8E] dark:text-gray-400 hover:bg-[#F5F5F7] dark:hover:bg-zinc-800'
     }`;
 
   return (
@@ -462,15 +558,21 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
       </header>
 
       {/* Section tabs */}
-      <div className="flex p-1 bg-white dark:bg-zinc-900 border border-[#E5E5E0] dark:border-zinc-800 rounded-xl gap-1">
+      <div className="flex p-1 bg-white dark:bg-zinc-900 border border-[#E5E7EB] dark:border-zinc-800 rounded-xl gap-1">
         <button onClick={() => setActiveSection('import-export')} className={tabClass('import-export')}>
-          <Download className="w-4 h-4" /> {t('Import / Export')}
+          <Download className="w-4 h-4 flex-shrink-0" />
+          <span className="hidden md:inline">{t('Import / Export')}</span>
+          <span className="md:hidden">Import</span>
         </button>
         <button onClick={() => setActiveSection('pdf')} className={tabClass('pdf')}>
-          <FileDown className="w-4 h-4" /> {t('Print to PDF')}
+          <FileDown className="w-4 h-4 flex-shrink-0" />
+          <span className="hidden md:inline">{t('Print to PDF')}</span>
+          <span className="md:hidden">{t('PDF Export') || 'PDF Export'}</span>
         </button>
         <button onClick={() => setActiveSection('drive')} className={tabClass('drive')}>
-          <CloudUpload className="w-4 h-4" /> {t('Google Drive Sync')}
+          <CloudUpload className="w-4 h-4 flex-shrink-0" />
+          <span className="hidden md:inline">{t('Google Drive Sync')}</span>
+          <span className="md:hidden">Drive</span>
         </button>
       </div>
 
@@ -478,7 +580,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
       {activeSection === 'import-export' && (
         <div className="space-y-6 w-full">
           {/* Sub-toggle: Export / Import */}
-          <div className="flex p-1 bg-[#F5F5F0] dark:bg-zinc-800 rounded-lg w-fit mx-auto">
+          <div className="flex p-1 bg-[#F5F5F7] dark:bg-zinc-800 rounded-lg w-fit mx-auto">
             <button
               onClick={() => { setMode('export'); setImportPreview(null); }}
               className={`px-5 py-1.5 rounded-md text-sm font-bold transition-all ${
@@ -497,7 +599,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
             </button>
           </div>
 
-          <div className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-[#E5E5E0] dark:border-zinc-800 shadow-sm w-full mx-auto">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-[#E5E7EB] dark:border-zinc-800 shadow-sm w-full mx-auto">
             {mode === 'export' ? (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -506,7 +608,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                     <select
                       value={exportFilters.scienceId}
                       onChange={e => setExportFilters({...exportFilters, scienceId: e.target.value, bookId: ''})}
-                      className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 aref-ruqaa-regular"
+                      className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 aref-ruqaa-regular"
                     >
                       <option value="">All Sciences</option>
                       {sciences?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -518,7 +620,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                     <select
                       value={exportFilters.bookId}
                       onChange={e => setExportFilters({...exportFilters, bookId: e.target.value})}
-                      className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 aref-ruqaa-regular"
+                      className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 aref-ruqaa-regular"
                     >
                       <option value="">All Books</option>
                       {books?.filter(b => !exportFilters.scienceId || String(b.science_id) === exportFilters.scienceId).map(b => (
@@ -532,7 +634,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                     <select
                       value={exportFilters.author}
                       onChange={e => setExportFilters({...exportFilters, author: e.target.value})}
-                      className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 aref-ruqaa-regular"
+                      className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 aref-ruqaa-regular"
                     >
                       <option value="">All Authors</option>
                       {authors.map(author => (
@@ -556,8 +658,8 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                         onClick={() => setExportFilters({...exportFilters, format: fmt.id})}
                         className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${
                           exportFilters.format === fmt.id
-                            ? 'border-[#5A5A40] dark:border-zinc-500 bg-[#5A5A40]/5 dark:bg-zinc-800 text-[#5A5A40] dark:text-zinc-300'
-                            : 'border-[#E5E5E0] dark:border-zinc-700 hover:border-[#5A5A40]/50 dark:hover:border-zinc-600 text-[#8E8E8E] dark:text-gray-500'
+                            ? 'border-[#6197EC] dark:border-zinc-500 bg-[#6197EC]/5 dark:bg-zinc-800 text-[#18407B] dark:text-zinc-300'
+                            : 'border-[#E5E7EB] dark:border-zinc-700 hover:border-[#6197EC]/50 dark:hover:border-zinc-600 text-[#8E8E8E] dark:text-gray-500'
                         }`}
                       >
                         <fmt.icon className="w-6 h-6" />
@@ -573,7 +675,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                 <button
                   onClick={handleExport}
                   disabled={loading}
-                  className="w-full bg-[#5A5A40] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#5A5A40]/20 dark:shadow-none hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+                  className="w-full bg-[#6197EC] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#6197EC]/20 dark:shadow-none hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
                 >
                   {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
                   {t('Download Export')}
@@ -581,6 +683,12 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               </div>
             ) : (
               <div className="space-y-6">
+                <button
+                  onClick={handleUndoLastImport}
+                  className="w-full py-3 rounded-xl text-sm font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                >
+                  Undo Last Import
+                </button>
                 {/* File upload */}
                 <div className="space-y-3 flex flex-col items-center text-center">
                   <label className="text-xs font-bold uppercase tracking-wider text-[#8E8E8E] dark:text-gray-500 block">{t('Upload File')}</label>
@@ -589,7 +697,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                     type="file"
                     accept=".json,.md,.txt"
                     onChange={handleFileUpload}
-                    className="w-full max-w-sm cursor-pointer bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 text-sm flex items-center justify-center text-center file:cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-[#5A5A40] file:text-white hover:file:bg-[#4A4A30]"
+                    className="w-full max-w-sm cursor-pointer bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 text-sm flex items-center justify-center text-center file:cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-[#6197EC] file:text-white hover:file:bg-[#4C81D9]"
                   />
                 </div>
 
@@ -600,14 +708,14 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                     value={importData}
                     onChange={e => { setImportData(e.target.value); setImportPreview(null); setParsedImportData(null); }}
                     rows={8}
-                    className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 font-mono text-xs"
+                    className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 font-mono text-xs"
                     placeholder='[{"title": "Note Title", "content": "...", ...}]'
                   />
                   {importData && !importPreview && (
                     <button
                       onClick={handlePreviewFromText}
                       disabled={loading}
-                      className="px-4 py-2 bg-[#F5F5F0] dark:bg-zinc-800 text-[#5A5A40] dark:text-zinc-300 rounded-xl text-sm font-bold hover:bg-[#E5E5E0] dark:hover:bg-zinc-700 transition-all"
+                      className="px-4 py-2 bg-[#F5F5F7] dark:bg-zinc-800 text-[#18407B] dark:text-zinc-300 rounded-xl text-sm font-bold hover:bg-[#E5E7EB] dark:hover:bg-zinc-700 transition-all"
                     >
                       {loading ? <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> : null}
                       {t('Import Preview')}
@@ -617,13 +725,13 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
 
                 {/* Preview results */}
                 {importPreview && (
-                  <div className="bg-[#F5F5F0] dark:bg-zinc-800 rounded-2xl p-5 space-y-3">
+                  <div className="bg-[#F5F5F7] dark:bg-zinc-800 rounded-2xl p-5 space-y-3">
                     <h4 className="text-sm font-bold text-[#1A1A1A] dark:text-white flex items-center gap-2">
                       <AlertCircle className="w-4 h-4" /> {t('Import Preview')}
                     </h4>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 text-center">
-                        <div className="text-2xl font-bold text-[#5A5A40] dark:text-zinc-300">{importPreview.total}</div>
+                        <div className="text-2xl font-bold text-[#18407B] dark:text-zinc-300">{importPreview.total}</div>
                         <div className="text-xs text-[#8E8E8E] dark:text-gray-500">{t('Items')}</div>
                       </div>
                       <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 text-center">
@@ -643,7 +751,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                         )}
                       </div>
                       <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 text-center">
-                        <div className="text-2xl font-bold text-[#5A5A40] dark:text-zinc-300">{importPreview.sciences}</div>
+                        <div className="text-2xl font-bold text-[#18407B] dark:text-zinc-300">{importPreview.sciences}</div>
                         <div className="text-xs text-[#8E8E8E] dark:text-gray-500">{t('Sciences')}</div>
                       </div>
                     </div>
@@ -654,9 +762,9 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                           id="forceDuplicates"
                           checked={forceDuplicates}
                           onChange={(e) => setForceDuplicates(e.target.checked)}
-                          className="rounded border-gray-300 text-[#5A5A40] focus:ring-[#5A5A40]"
+                          className="rounded border-gray-300 text-[#18407B] focus:ring-[#6197EC]"
                         />
-                        <label htmlFor="forceDuplicates" className="text-sm font-medium text-[#5A5A40] dark:text-zinc-300">
+                        <label htmlFor="forceDuplicates" className="text-sm font-medium text-[#18407B] dark:text-zinc-300">
                           Force-save duplicates anyway
                         </label>
                       </div>
@@ -664,7 +772,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                     <button
                       onClick={handleConfirmImport}
                       disabled={loading || (importPreview.newCount === 0 && (!forceDuplicates || importPreview.duplicateCount === 0))}
-                      className="w-full bg-[#5A5A40] dark:bg-zinc-700 text-white font-bold py-3 rounded-2xl shadow-lg shadow-[#5A5A40]/20 dark:shadow-none hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                      className="w-full bg-[#6197EC] dark:bg-zinc-700 text-white font-bold py-3 rounded-2xl shadow-lg shadow-[#6197EC]/20 dark:shadow-none hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                       {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
                       {t('Confirm Import')} ({importPreview.newCount} {t('New Items')})
@@ -679,8 +787,10 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
 
       {/* Section B: Print to PDF */}
       {activeSection === 'pdf' && (
-        <div className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-[#E5E5E0] dark:border-zinc-800 shadow-sm w-full mx-auto space-y-6">
+        <div className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-[#E5E7EB] dark:border-zinc-800 shadow-sm w-full mx-auto space-y-6">
           <div className="space-y-4">
+
+
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider text-[#8E8E8E] dark:text-gray-500">PDF Title (Optional)</label>
               <input
@@ -688,31 +798,20 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                 value={pdfTitle}
                 onChange={e => setPdfTitle(e.target.value)}
                 placeholder="Import / Export"
-                className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 aref-ruqaa-regular"
+                className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 aref-ruqaa-regular"
                 dir="auto"
               />
             </div>
             
-            <label className="flex items-center gap-3 cursor-pointer p-3 bg-[#F5F5F0] dark:bg-zinc-800 rounded-xl border border-transparent hover:border-[#E5E5E0] dark:hover:border-zinc-700 transition-all">
+            <label className="flex items-center gap-3 cursor-pointer p-3 bg-[#F5F5F7] dark:bg-zinc-800 rounded-xl border border-transparent hover:border-[#E5E7EB] dark:hover:border-zinc-700 transition-all">
               <input
                 type="checkbox"
                 checked={includePdfHeader}
                 onChange={(e) => setIncludePdfHeader(e.target.checked)}
-                className="w-4 h-4 rounded text-[#5A5A40] focus:ring-[#5A5A40] dark:focus:ring-zinc-600 dark:bg-zinc-900 border-none"
+                className="w-4 h-4 rounded text-[#18407B] focus:ring-[#6197EC] dark:focus:ring-zinc-600 dark:bg-zinc-900 border-none"
               />
               <span className="text-sm font-bold text-[#1A1A1A] dark:text-white">
                 Include Title and Meta Information
-              </span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer p-3 bg-[#F5F5F0] dark:bg-zinc-800 rounded-xl border border-transparent hover:border-[#E5E5E0] dark:hover:border-zinc-700 transition-all">
-              <input
-                type="checkbox"
-                checked={includePdfWatermark}
-                onChange={(e) => setIncludePdfWatermark(e.target.checked)}
-                className="w-4 h-4 rounded text-[#5A5A40] focus:ring-[#5A5A40] dark:focus:ring-zinc-600 dark:bg-zinc-900 border-none"
-              />
-              <span className="text-sm font-bold text-[#1A1A1A] dark:text-white">
-                Include 'IlmDaftar' PDF Watermark
               </span>
             </label>
 
@@ -724,7 +823,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               <select
                 value={pdfFilters.scienceId}
                 onChange={e => setPdfFilters({...pdfFilters, scienceId: e.target.value, bookId: ''})}
-                className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 aref-ruqaa-regular"
+                className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 aref-ruqaa-regular"
               >
                 <option value="">All Sciences</option>
                 {sciences?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -736,7 +835,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               <select
                 value={pdfFilters.bookId}
                 onChange={e => setPdfFilters({...pdfFilters, bookId: e.target.value})}
-                className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 aref-ruqaa-regular"
+                className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 aref-ruqaa-regular"
               >
                 <option value="">All Books</option>
                 {books?.filter(b => !pdfFilters.scienceId || String(b.science_id) === pdfFilters.scienceId).map(b => (
@@ -750,7 +849,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               <select
                 value={pdfFilters.author}
                 onChange={e => setPdfFilters({...pdfFilters, author: e.target.value})}
-                className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600 aref-ruqaa-regular"
+                className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600 aref-ruqaa-regular"
               >
                 <option value="">All Authors</option>
                 {authors.map(author => (
@@ -767,7 +866,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
           <button
             onClick={handleGeneratePDF}
             disabled={loading}
-            className="w-full bg-[#5A5A40] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#5A5A40]/20 dark:shadow-none hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full bg-[#6197EC] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#6197EC]/20 dark:shadow-none hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileDown className="w-5 h-5" />}
             {t('Generate PDF')}
@@ -777,9 +876,9 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
 
       {/* Section C: Google Drive Sync */}
       {activeSection === 'drive' && (
-        <div className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-[#E5E5E0] dark:border-zinc-800 shadow-sm w-full mx-auto space-y-6">
+        <div className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-[#E5E7EB] dark:border-zinc-800 shadow-sm w-full mx-auto space-y-6">
           {/* Status */}
-          <div className="flex items-center gap-3 bg-[#F5F5F0] dark:bg-zinc-800 rounded-2xl p-4">
+          <div className="flex items-center gap-3 bg-[#F5F5F7] dark:bg-zinc-800 rounded-2xl p-4">
             {driveStatus ? (
               <CheckCircle2 className="w-5 h-5 text-green-500" />
             ) : (
@@ -796,7 +895,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
           {!driveStatus ? (
             <button
               onClick={handleDriveConnect}
-              className="w-full bg-[#5A5A40] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#5A5A40]/20 dark:shadow-none hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2"
+              className="w-full bg-[#6197EC] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#6197EC]/20 dark:shadow-none hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2"
             >
               <CloudUpload className="w-5 h-5" />
               {t('Connect to Google Drive')}
@@ -806,7 +905,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               <button
                 onClick={handleDriveUpload}
                 disabled={loading}
-                className="bg-[#5A5A40] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#5A5A40]/20 dark:shadow-none hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="bg-[#6197EC] dark:bg-zinc-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#6197EC]/20 dark:shadow-none hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CloudUpload className="w-5 h-5" />}
                 {t('Backup to Drive')}
@@ -814,7 +913,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
               <button
                 onClick={handleDriveDownload}
                 disabled={loading}
-                className="bg-white dark:bg-zinc-800 text-[#5A5A40] dark:text-zinc-300 font-bold py-4 rounded-2xl border-2 border-[#5A5A40] dark:border-zinc-600 hover:bg-[#F5F5F0] dark:hover:bg-zinc-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="bg-white dark:bg-zinc-800 text-[#18407B] dark:text-zinc-300 font-bold py-4 rounded-2xl border-2 border-[#6197EC] dark:border-zinc-600 hover:bg-[#F5F5F7] dark:hover:bg-zinc-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CloudDownload className="w-5 h-5" />}
                 {t('Restore from Drive')}
@@ -875,7 +974,7 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
                                     if (e.target.checked) setAllowedDuplicateContents(p => [...p, importedText]);
                                     else setAllowedDuplicateContents(p => p.filter(c => c !== importedText));
                                   }}
-                                  className="w-5 h-5 rounded border-zinc-300 text-[#5A5A40] focus:ring-[#5A5A40] disabled:opacity-50"
+                                  className="w-5 h-5 rounded border-zinc-300 text-[#18407B] focus:ring-[#6197EC] disabled:opacity-50"
                                 />
                               </label>
                             </div>
@@ -908,12 +1007,12 @@ export default function ImportExport({ sciences, onUpdate }: ImportExportProps) 
 
                 <div className="p-6 border-t border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="text-zinc-600 dark:text-zinc-400 font-medium">
-                    <span className="text-xl font-bold text-[#5A5A40] dark:text-zinc-200 mr-2">{allowedDuplicateContents.length}</span> 
+                    <span className="text-xl font-bold text-[#18407B] dark:text-zinc-200 mr-2">{allowedDuplicateContents.length}</span> 
                     selected to overwrite/save
                   </div>
                   <button
                     onClick={() => setShowDuplicateReviewWindow(false)}
-                    className="w-full sm:w-auto px-8 py-3 bg-[#5A5A40] dark:bg-zinc-700 text-white rounded-xl font-bold shadow-lg shadow-[#5A5A40]/20 dark:shadow-none hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto px-8 py-3 bg-[#6197EC] dark:bg-zinc-700 text-white rounded-xl font-bold shadow-lg shadow-[#6197EC]/20 dark:shadow-none hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="w-5 h-5" />
                     Done Reviewing

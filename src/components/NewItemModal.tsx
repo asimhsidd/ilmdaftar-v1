@@ -41,7 +41,7 @@ export default function NewItemModal({
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
-          className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-[#E5E5E0] dark:border-zinc-800"
+          className="bg-white dark:bg-zinc-900 rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-[#E5E7EB] dark:border-zinc-800"
         >
           <h3 className="text-lg font-serif font-bold mb-4 dark:text-white">
             {type === 'book' ? t('Add New Book') : t('Add New Sharh')}
@@ -51,7 +51,7 @@ export default function NewItemModal({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={type === 'book' ? t('Enter Book Name') : t('Enter Sharh Name')}
-            className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 mb-3 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+            className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 mb-3 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
             autoFocus
           />
           <input
@@ -60,7 +60,7 @@ export default function NewItemModal({
             value={author}
             onChange={(e) => setAuthor(e.target.value)}
             placeholder={`${t('Author Name')} (${t('Optional')})`}
-            className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 mb-4 focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+            className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 mb-4 focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
           />
           <datalist id="authors-list">
             {authors.map((a, i) => (
@@ -70,7 +70,7 @@ export default function NewItemModal({
           <div className="flex justify-end gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F0] dark:hover:bg-zinc-800 transition-all"
+              className="px-4 py-2 rounded-xl text-sm font-bold text-[#8E8E8E] hover:bg-[#F5F5F7] dark:hover:bg-zinc-800 transition-all"
             >
               {t('Cancel')}
             </button>
@@ -82,7 +82,7 @@ export default function NewItemModal({
                 onClose();
               }}
               disabled={!title.trim()}
-              className="px-4 py-2 bg-[#5A5A40] text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] transition-all disabled:opacity-50"
+              className="px-4 py-2 bg-[#6197EC] text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] transition-all disabled:opacity-50"
             >
               {t('Save')}
             </button>

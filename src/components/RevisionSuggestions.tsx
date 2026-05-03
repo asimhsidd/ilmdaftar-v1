@@ -92,15 +92,15 @@ export default function RevisionSuggestions({ sciences, onReview }: RevisionSugg
         </div>
         <button 
           onClick={generateSuggestions}
-          className="p-3 bg-white dark:bg-zinc-800 border border-[#E5E5E0] dark:border-zinc-700 rounded-2xl hover:bg-[#F5F5F0] dark:hover:bg-zinc-700 transition-all"
+          className="p-3 bg-white dark:bg-zinc-800 border border-[#E5E7EB] dark:border-zinc-700 rounded-2xl hover:bg-[#F5F5F7] dark:hover:bg-zinc-700 transition-all"
         >
-          <RefreshCw className={`w-5 h-5 text-[#5A5A40] dark:text-zinc-300 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-5 h-5 text-[#18407B] dark:text-zinc-300 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </header>
 
       {loading ? (
         <div className="flex justify-center py-20">
-          <Loader2 className="w-10 h-10 text-[#5A5A40] animate-spin" />
+          <Loader2 className="w-10 h-10 text-[#18407B] animate-spin" />
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
@@ -112,7 +112,7 @@ export default function RevisionSuggestions({ sciences, onReview }: RevisionSugg
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.1 }}
-                className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-[#E5E5E0] dark:border-zinc-800 shadow-sm hover:border-[#5A5A40] dark:hover:border-zinc-600 transition-all group"
+                className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-[#E5E7EB] dark:border-zinc-800 shadow-sm hover:border-[#6197EC] dark:hover:border-zinc-600 transition-all group"
               >
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-2">
@@ -139,14 +139,14 @@ export default function RevisionSuggestions({ sciences, onReview }: RevisionSugg
                 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-bold text-[#8E8E8E] dark:text-gray-500">
-                    <span className="bg-[#F5F5F0] dark:bg-zinc-800 px-2 py-1 rounded-md">{note.book_title}</span>
+                    <span className="bg-[#F5F5F7] dark:bg-zinc-800 px-2 py-1 rounded-md">{note.book_title}</span>
                     <span>•</span>
                     <span>{note.reference || (note.page_number ? `${t('Page #')} ${note.page_number}` : '')}</span>
                   </div>
                   
                   <button 
                     onClick={onReview}
-                    className="flex items-center gap-1 text-sm font-bold text-[#5A5A40] dark:text-zinc-300 opacity-0 group-hover:opacity-100 transition-all hover:gap-2"
+                    className="flex items-center gap-1 text-sm font-bold text-[#18407B] dark:text-zinc-300 opacity-0 group-hover:opacity-100 transition-all hover:gap-2"
                   >
                     {t('Review Now')} <ArrowRight className="w-4 h-4" />
                   </button>
@@ -157,7 +157,7 @@ export default function RevisionSuggestions({ sciences, onReview }: RevisionSugg
           })}
 
           {suggestions.length === 0 && (
-            <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-[#E5E5E0] dark:border-zinc-800 border-dashed">
+            <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-[#E5E7EB] dark:border-zinc-800 border-dashed">
               <p className="text-[#8E8E8E] dark:text-gray-500">{t('No notes available')}</p>
             </div>
           )}

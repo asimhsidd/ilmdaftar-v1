@@ -7,6 +7,7 @@ export interface Book {
   id: number;
   science_id: number;
   title: string;
+  author?: string;
   total_pages: number;
   science_name?: string;
 }
@@ -40,7 +41,6 @@ export interface Fawaid {
   book_title?: string;
   science_name?: string;
   science_id?: number;
-  author?: string;
   sharh_title?: string;
   question_types?: string[];
   keywords?: string[];
@@ -51,6 +51,8 @@ export interface Fawaid {
   language?: 'arabic' | 'english';
   priority?: 'red' | 'yellow' | 'green';
   lastReviewedAt?: string;
+  status?: 'formatted' | 'unformatted';
+  connections?: number[];
   
   // FSRS SRS fields
   due?: string;
@@ -67,6 +69,7 @@ export interface Fawaid {
 export interface Stats {
   totalSciences: number;
   totalBooks: number;
+  needsFormatting?: number;
   totalFawaid: number;
   scienceStats: { name: string; count: number }[];
 }

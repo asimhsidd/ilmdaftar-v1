@@ -216,6 +216,103 @@ Return ONLY strict valid JSON matching exactly this schema:
   };
 }
 
+export async function categorizeBook(bookName: string, author: string, existingSciences: {id: number, name: string}[], apiKey?: string) {
+  const key = apiKey || (typeof process !== 'undefined' && process.env?.API_KEY) || (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY);
+  if (!key) {
+    throw new Error("Please configure your Gemini API key in Settings.");
+  }
+  
+  const ai = new GoogleGenAI({ apiKey: key });
+
+  const prompt = `You are an expert Islamic bibliographer. I have a book:
+Book Name: "${bookName}"
+Current Author: "${author || 'Unknown'}"
+
+I need to categorize this book into an Islamic science (category) and identify the famous author if possible.
+Here is the list of existing sciences in my database:
+${JSON.stringify(existingSciences)}
+
+Task:
+1. Examine the book name.
+2. Check if it fits well into any of the existing sciences provided. If yes, return its exact ID in "matchedScienceId".
+3. If it does NOT fit well, or if the list is empty, suggest a short, standard Arabic name for a new science category (e.g. "العقيدة", "الفقه", "الحديث", "التفسير", "أصول الفقه") in "newScienceName" and leave "matchedScienceId" as null.
+4. If the Current Author is "Unknown" or empty, suggest the most famous author for this book name (in Arabic) in the "suggestedAuthor" field.
+
+Return the result in strict JSON format:
+{
+  "matchedScienceId": number | null,
+  "newScienceName": "string | null",
+  "suggestedAuthor": "string | null"
+}`;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: [{ parts: [{ text: prompt }] }],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          matchedScienceId: { type: Type.NUMBER },
+          newScienceName: { type: Type.STRING },
+          suggestedAuthor: { type: Type.STRING },
+        },
+      },
+    }
+  });
+
+  return JSON.parse(response.text || "{}");
+}
+
+export async function splitMasroohAndSharh(bookName: string, author?: string, apiKey?: string) {
+  const key = apiKey || (typeof process !== 'undefined' && process.env?.API_KEY) || (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY);
+  if (!key) {
+    return {
+      masroohBookName: bookName,
+      sharhTitle: null
+    };
+  }
+
+  const ai = new GoogleGenAI({ apiKey: key });
+  const prompt = `You are an expert Islamic librarian.
+Input title: "${bookName}"
+Input author: "${author || ''}"
+
+Goal:
+1. Detect whether the title refers to a sharh/commentary work on another base text (matn/masrooh).
+2. If it is a sharh, return the base text title in "masroohBookName" and the commentary title in "sharhTitle".
+3. If it is not a sharh, return the original title as "masroohBookName" and null for "sharhTitle".
+4. Preserve Arabic wording exactly when possible.
+
+Return strict JSON:
+{
+  "masroohBookName": "string",
+  "sharhTitle": "string | null"
+}`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: [{ parts: [{ text: prompt }] }],
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          masroohBookName: { type: Type.STRING },
+          sharhTitle: { type: Type.STRING, nullable: true }
+        },
+        required: ['masroohBookName']
+      }
+    }
+  });
+
+  const parsed = JSON.parse(response.text || '{}');
+  return {
+    masroohBookName: parsed.masroohBookName || bookName,
+    sharhTitle: parsed.sharhTitle || null
+  };
+}
+
 export async function generateEmbedding(text: string, apiKey?: string) {
   const key = apiKey || (typeof process !== 'undefined' && process.env?.API_KEY) || (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY);
   if (!key) {

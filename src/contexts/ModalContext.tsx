@@ -17,6 +17,15 @@ interface ModalContextType {
 
 const ModalContext = createContext<ModalContextType | undefined>(undefined);
 
+function normalizeModalMessage(message?: string): string | undefined {
+  if (!message) return message;
+  const trimmed = message.trim();
+  if (trimmed === 'Failed to fetch' || trimmed.includes('ERR_CONNECTION_REFUSED')) {
+    return 'Cannot reach the server right now. Please make sure the app server is running, then try again.';
+  }
+  return message;
+}
+
 export const ModalProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [modalState, setModalState] = useState<{
     options: ModalOptions;
@@ -47,7 +56,7 @@ export const ModalProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             <div className="overflow-y-auto flex-1 min-h-0 custom-scrollbar">
               {modalState.options.message && (
                 <p className="mb-6 text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
-                  {modalState.options.message}
+                  {normalizeModalMessage(modalState.options.message)}
                 </p>
               )}
               
@@ -69,7 +78,7 @@ export const ModalProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               )}
               <button
                 onClick={() => handleClose('confirm')}
-                className="px-4 py-2 bg-[#5A5A40] dark:bg-zinc-700 text-white rounded-lg hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-colors font-medium shadow-md shadow-[#5A5A40]/20 dark:shadow-none"
+                className="px-4 py-2 bg-[#6197EC] dark:bg-zinc-700 text-white rounded-lg hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-colors font-medium shadow-md shadow-[#6197EC]/20 dark:shadow-none"
               >
                 {modalState.options.confirmText || 'OK'}
               </button>

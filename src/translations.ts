@@ -209,7 +209,7 @@ export const translations: Record<string, Record<string, string>> = {
     'days': 'days',
     'Due Today': 'Due Today',
     'Back to Dashboard': 'Back to Dashboard',
-    'Dashboard Welcome': 'Welcome back. Your personal archive of Islamic knowledge is growing.',
+    'Dashboard Welcome': 'Your personal notebook of benefits',
     'Top Sciences': 'Top Sciences',
     'Notes Count': 'notes',
     'Quick Actions': 'Quick Actions',
@@ -283,6 +283,48 @@ export const translations: Record<string, Record<string, string>> = {
     'Get API Key': 'Get API Key',
     'API Key Description': 'Required for OCR. Get your free key from Google AI Studio.',
     'Settings': 'Settings',
+    'Urdu': 'Urdu',
+
+    // Search
+    'Smart Mode': 'Smart Mode',
+    'Exact Match': 'Exact Match',
+    'All Statuses': 'All Statuses',
+    'Formatted': 'Formatted',
+    'Unformatted': 'Unformatted',
+    'All Authors': 'All Authors',
+    'Linked:': 'Linked:',
+    'Matched because:': 'Matched because:',
+    'Did you mean:': 'Did you mean:',
+    'Clear': 'Clear',
+    'Needs Formatting': 'Needs Formatting',
+    'Expand / Collapse': 'Expand / Collapse',
+    'View in Book': 'View in Book',
+
+    // OCR
+    'Retry OCR': 'Retry OCR',
+
+    // Developer
+    'Developer Settings': 'Developer Settings',
+    'Enter Developer Password': 'Enter developer password:',
+    'Incorrect Password': 'Incorrect password.',
+    'Developer Mode Unlocked': 'Developer mode unlocked!',
+    'Developer Mode Active': 'Dev Mode',
+    'Search Shamela': 'Search Shamela',
+    'Searching Content:': 'Searching Content:',
+    'Shamela Search': 'Shamela Search',
+
+    // Appearance
+    'Appearance': 'Appearance',
+    'Appearance Settings': 'Appearance Settings',
+    'Title Font': 'Title Font',
+    'Body Font': 'Body Font',
+    'Text Size': 'Text Size',
+    'Customize fonts and text size.': 'Customize fonts and text size.',
+
+    // Misc
+    'Information': 'Information',
+    'Create New Book': 'Create New Book',
+    'Score:': 'Score:',
   },
   ar: {
     // Sidebar
@@ -496,7 +538,7 @@ export const translations: Record<string, Record<string, string>> = {
     'Due Today': 'مستحق اليوم',
     
     // New Additions
-    'Dashboard Welcome': 'أهلاً بك. أرشيفك الشخصي للمعرفة الإسلامية ينمو.',
+    'Dashboard Welcome': 'دفترك الشخصي للفوائد',
     'Top Sciences': 'أهم العلوم',
     'Notes Count': 'ملاحظات',
     'Quick Actions': 'إجراءات سريعة',
@@ -570,5 +612,168 @@ export const translations: Record<string, Record<string, string>> = {
     'Get API Key': 'احصل على مفتاح API',
     'API Key Description': 'مطلوب للتعرف الضوئي. احصل على مفتاحك المجاني من Google AI Studio.',
     'Settings': 'الإعدادات',
+    'Urdu': 'الأردية',
+
+    // Search
+    'Smart Mode': 'البحث الذكي',
+    'Exact Match': 'مطابقة تامة',
+    'All Statuses': 'كل الحالات',
+    'Formatted': 'منسقة',
+    'Unformatted': 'غير منسقة',
+    'All Authors': 'كل المؤلفين',
+    'Linked:': 'مرتبطة:',
+    'Matched because:': 'مطابقة بسبب:',
+    'Did you mean:': 'هل تقصد:',
+    'Clear': 'مسح',
+    'Needs Formatting': 'تحتاج تنسيق',
+    'Expand / Collapse': 'توسيع / طي',
+    'View in Book': 'عرض في الكتاب',
+
+    // OCR
+    'Retry OCR': 'إعادة التعرف الضوئي',
+
+    // Developer
+    'Developer Settings': 'إعدادات المطور',
+    'Enter Developer Password': 'أدخل كلمة مرور المطور:',
+    'Incorrect Password': 'كلمة المرور غير صحيحة.',
+    'Developer Mode Unlocked': 'تم تفعيل وضع المطور!',
+    'Developer Mode Active': 'وضع المطور',
+    'Search Shamela': 'بحث الشاملة',
+    'Searching Content:': 'جاري البحث في المحتوى:',
+    'Shamela Search': 'بحث الشاملة',
+
+    // Appearance
+    'Appearance': 'المظهر',
+    'Appearance Settings': 'إعدادات المظهر',
+    'Title Font': 'خط العنوان',
+    'Body Font': 'خط النص',
+    'Text Size': 'حجم النص',
+    'Customize fonts and text size.': 'تخصيص الخطوط وحجم النص.',
+
+    // Misc
+    'Information': 'معلومات',
+    'Create New Book': 'إنشاء كتاب جديد',
+    'Score:': 'الدرجة:',
+  },
+  ur: {
+    // Sidebar
+    'Back to Dashboard': 'ڈیش بورڈ پر واپس جائیں',
+    'Dashboard': 'ڈیش بورڈ',
+    'Add Fāʾidah': 'فائدہ شامل کریں',
+    'Explorer': 'ایکسپلورر',
+    'Search': 'تلاش',
+    'Review Mode': 'نظرثانی موڈ',
+    'Coming Soon': 'جلد آ رہا ہے',
+    'Import / Export': 'درآمد / برآمد',
+    'Revision Suggestions': 'نظرثانی کی تجاویز',
+    'ilm_daftar_desc_1': 'علم دفتر',
+    'ilm_daftar_desc_2': 'علم کی قید',
+    
+    // Common
+    'Collapse Sidebar': 'سائیڈ بار بند کریں',
+    'Expand Sidebar': 'سائیڈ بار کھولیں',
+    'Loading...': 'لوڈ ہو رہا ہے...',
+    'Error': 'غلطی',
+    'Success': 'کامیابی',
+    'Cancel': 'منسوخ کریں',
+    'Save': 'محفوظ کریں',
+    'Delete': 'حذف کریں',
+    'This app is powered by Gemini, AI is not always reliable and can make mistakes': 'یہ ایپ جیمنائی کے ذریعے چلتی ہے، AI ہمیشہ قابل اعتماد نہیں ہوتا اور غلطیاں کر سکتا ہے',
+    'Edit': 'ترمیم کریں',
+    'Copy': 'کاپی کریں',
+    'Open': 'کھولیں',
+    'Close': 'بند کریں',
+    'Back': 'واپس',
+    'Next': 'اگلا',
+    'Previous': 'پچھلا',
+    'Submit': 'جمع کرائیں',
+    'Download': 'ڈاؤن لوڈ',
+    'Upload': 'اپ لوڈ',
+    'Confirm': 'تصدیق کریں',
+    'Yes': 'جی ہاں',
+    'No': 'نہیں',
+    'Reset': 'دوبارہ ترتیب دیں',
+    'Add': 'شامل کریں',
+    'Add Science': 'علم شامل کریں',
+    'Add New Book': 'نئی کتاب شامل کریں',
+    'Add New Sharh': 'نئی شرح شامل کریں',
+    
+    // Dashboard
+    'Total Sciences': 'کل علوم',
+    'Total Books': 'کل کتب',
+    'Total Fawaid': 'کل فوائد',
+    'View All': 'سب دیکھیں',
+    'Dashboard Welcome': 'آپ کا علمی نوٹ بک',
+    'Quick Actions': 'فوری اقدامات',
+    
+    // Capture
+    'OCR Capture': 'تصویر سے متن',
+    'Manual Entry': 'دستی اندراج',
+    'Science': 'علم',
+    'Book Title': 'کتاب کا عنوان',
+    'Sharh': 'شرح',
+    'Author': 'مصنف',
+    'Title': 'عنوان',
+    'Content': 'مواد',
+    'Fāʾidah Text': 'فائدہ کا متن',
+    'Save Fāʾidah': 'فائدہ محفوظ کریں',
+    'Fill Metadata': 'معلومات بھریں',
+    'Translate': 'ترجمہ کریں',
+    'AI Assistance': 'مصنوعی ذہانت کی مدد',
+    'Tags': 'ٹیگز',
+    'Extra Notes': 'اضافی نوٹس',
+    'Page #': 'صفحہ نمبر',
+    'Volume': 'جلد',
+    'Tabah': 'ایڈیشن',
+    'Reference': 'حوالہ',
+    'Language': 'زبان',
+    'Arabic': 'عربی',
+    'English': 'انگریزی',
+    'Urdu': 'اردو',
+    'Dark Mode': 'ڈارک موڈ',
+    'Light Mode': 'لائٹ موڈ',
+    'Settings': 'ترتیبات',
+    'API Key': 'API کی',
+    'Appearance': 'ظاہری شکل',
+
+    // Search
+    'Smart Mode': 'ذہین موڈ',
+    'Exact Match': 'مکمل مماثلت',
+    'All Statuses': 'تمام حالتیں',
+    'Formatted': 'فارمیٹ شدہ',
+    'Unformatted': 'غیر فارمیٹ شدہ',
+    'All Authors': 'تمام مصنفین',
+    'Linked:': 'مربوط:',
+    'Matched because:': 'مطابقت کی وجہ:',
+    'Did you mean:': 'کیا آپ کا مطلب ہے:',
+    'Clear': 'صاف',
+    'Needs Formatting': 'فارمیٹنگ درکار',
+    'Expand / Collapse': 'پھیلائیں / سکیڑیں',
+    'View in Book': 'کتاب میں دیکھیں',
+
+    // OCR
+    'Retry OCR': 'دوبارہ OCR',
+
+    // Developer
+    'Developer Settings': 'ڈویلپر ترتیبات',
+    'Enter Developer Password': 'ڈویلپر پاس ورڈ درج کریں:',
+    'Incorrect Password': 'غلط پاس ورڈ۔',
+    'Developer Mode Unlocked': 'ڈویلپر موڈ فعال!',
+    'Developer Mode Active': 'ڈویلپر موڈ',
+    'Search Shamela': 'شاملہ تلاش',
+    'Searching Content:': 'مواد تلاش ہو رہا ہے:',
+    'Shamela Search': 'شاملہ تلاش',
+
+    // Appearance
+    'Appearance Settings': 'ظاہری ترتیبات',
+    'Title Font': 'عنوان فونٹ',
+    'Body Font': 'متن فونٹ',
+    'Text Size': 'متن کا سائز',
+    'Customize fonts and text size.': 'فونٹس اور متن کا سائز ترتیب دیں۔',
+
+    // Misc
+    'Information': 'معلومات',
+    'Create New Book': 'نئی کتاب بنائیں',
+    'Score:': 'اسکور:',
   }
 };

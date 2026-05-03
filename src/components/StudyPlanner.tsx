@@ -107,10 +107,10 @@ export default function StudyPlanner() {
     <div className="space-y-6 max-w-5xl mx-auto h-full pb-20 mt-4">
       
       {/* 1. TOP SECTION - OVERVIEW */}
-      <div className="bg-white dark:bg-zinc-900 border border-[#E5E5E0] dark:border-zinc-800 p-6 rounded-xl shadow-sm flex flex-col md:flex-row gap-6">
+      <div className="bg-white dark:bg-zinc-900 border border-[#E5E7EB] dark:border-zinc-800 p-6 rounded-xl shadow-sm flex flex-col md:flex-row gap-6">
         <div className="flex-1 space-y-4">
           <input 
-            className="text-2xl font-bold border-b border-transparent hover:border-[#E5E5E0] focus:border-[#5A5A40] focus:outline-none w-full bg-transparent dark:text-white"
+            className="text-2xl font-bold border-b border-transparent hover:border-[#E5E7EB] focus:border-[#6197EC] focus:outline-none w-full bg-transparent dark:text-white"
             value={activePlan.name}
             onChange={e => updateActivePlan({ name: e.target.value })}
             placeholder="Plan Name"
@@ -118,22 +118,22 @@ export default function StudyPlanner() {
           <div className="grid grid-cols-2 gap-4 mt-2">
             <div>
               <label className="block text-xs text-zinc-500 mb-1">Start Date</label>
-              <input type="date" className="p-2 border border-[#E5E5E0] dark:border-zinc-700 bg-transparent rounded-lg text-sm w-full dark:text-white" value={activePlan.startDate} onChange={e => updateActivePlan({ startDate: e.target.value })} />
+              <input type="date" className="p-2 border border-[#E5E7EB] dark:border-zinc-700 bg-transparent rounded-lg text-sm w-full dark:text-white" value={activePlan.startDate} onChange={e => updateActivePlan({ startDate: e.target.value })} />
             </div>
             <div>
               <label className="block text-xs text-zinc-500 mb-1">Target End Date (Optional)</label>
-              <input type="date" className="p-2 border border-[#E5E5E0] dark:border-zinc-700 bg-transparent rounded-lg text-sm w-full dark:text-white" value={activePlan.targetEndDate || ''} onChange={e => updateActivePlan({ targetEndDate: e.target.value })} />
+              <input type="date" className="p-2 border border-[#E5E7EB] dark:border-zinc-700 bg-transparent rounded-lg text-sm w-full dark:text-white" value={activePlan.targetEndDate || ''} onChange={e => updateActivePlan({ targetEndDate: e.target.value })} />
             </div>
           </div>
           <button 
              onClick={createNewPlan}
-             className="text-xs text-[#5A5A40] hover:underline"
+             className="text-xs text-[#18407B] hover:underline"
           >
             + Create another plan
           </button>
         </div>
         
-        <div className="flex-1 bg-[#F5F5F0] dark:bg-zinc-800/50 border border-[#E5E5E0] dark:border-zinc-800 p-4 rounded-xl grid grid-cols-2 gap-4 text-sm">
+        <div className="flex-1 bg-[#F5F5F7] dark:bg-zinc-800/50 border border-[#E5E7EB] dark:border-zinc-800 p-4 rounded-xl grid grid-cols-2 gap-4 text-sm">
           <div>
             <div className="text-zinc-500 text-xs mb-1">Total Books</div>
             <div className="text-xl font-bold dark:text-white">{totalBooks}</div>
@@ -155,7 +155,7 @@ export default function StudyPlanner() {
 
       <div className="flex justify-between items-center px-1">
         <h2 className="text-xl font-bold dark:text-white">Planning Modules</h2>
-        <button onClick={addBook} className="bg-[#5A5A40] text-white hover:bg-[#6A6A4E] transition-colors px-4 py-2 text-sm rounded-lg shadow-sm">+ Add Book</button>
+        <button onClick={addBook} className="bg-[#6197EC] text-white hover:bg-[#7567EE] transition-colors px-4 py-2 text-sm rounded-lg shadow-sm">+ Add Book</button>
       </div>
 
       {/* 2. BOOKS LIST */}
@@ -165,9 +165,9 @@ export default function StudyPlanner() {
           const pct = book.totalPages > 0 ? Math.min(100, Math.round((book.currentPageNumber / book.totalPages) * 100)) : 0;
           
           return (
-            <div key={book.id} className="bg-white dark:bg-zinc-900 border border-[#E5E5E0] dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden transition-all duration-200">
+            <div key={book.id} className="bg-white dark:bg-zinc-900 border border-[#E5E7EB] dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden transition-all duration-200">
               <div 
-                className="p-4 bg-[#F5F5F0]/50 dark:bg-zinc-800/20 border-b border-[#E5E5E0] dark:border-zinc-800 flex justify-between items-center cursor-pointer hover:bg-[#F5F5F0] dark:hover:bg-zinc-800/50 transition-colors"
+                className="p-4 bg-[#F5F5F7]/50 dark:bg-zinc-800/20 border-b border-[#E5E7EB] dark:border-zinc-800 flex justify-between items-center cursor-pointer hover:bg-[#F5F5F7] dark:hover:bg-zinc-800/50 transition-colors"
                 onClick={() => updateBook(book.id, { collapsed: !book.collapsed })}
               >
                 <div>
@@ -188,29 +188,29 @@ export default function StudyPlanner() {
                     <div className="space-y-4">
                       <div>
                         <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1">Book Name</label>
-                        <input className="border border-[#E5E5E0] dark:border-zinc-700 bg-transparent p-2.5 rounded-lg w-full text-sm dark:text-white" value={book.bookTitle} onChange={e => updateBook(book.id, { bookTitle: e.target.value })} />
+                        <input className="border border-[#E5E7EB] dark:border-zinc-700 bg-transparent p-2.5 rounded-lg w-full text-sm dark:text-white" value={book.bookTitle} onChange={e => updateBook(book.id, { bookTitle: e.target.value })} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1">Total Pages</label>
-                          <input type="number" className="border border-[#E5E5E0] dark:border-zinc-700 bg-transparent p-2.5 rounded-lg w-full text-sm dark:text-white" value={book.totalPages || ''} onChange={e => updateBook(book.id, { totalPages: parseInt(e.target.value) || 0 })} />
+                          <input type="number" className="border border-[#E5E7EB] dark:border-zinc-700 bg-transparent p-2.5 rounded-lg w-full text-sm dark:text-white" value={book.totalPages || ''} onChange={e => updateBook(book.id, { totalPages: parseInt(e.target.value) || 0 })} />
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1">Start Date</label>
-                          <input type="date" className="border border-[#E5E5E0] dark:border-zinc-700 bg-transparent p-2.5 rounded-lg w-full text-sm dark:text-white" value={book.startDate} onChange={e => updateBook(book.id, { startDate: e.target.value })} />
+                          <input type="date" className="border border-[#E5E7EB] dark:border-zinc-700 bg-transparent p-2.5 rounded-lg w-full text-sm dark:text-white" value={book.startDate} onChange={e => updateBook(book.id, { startDate: e.target.value })} />
                         </div>
                       </div>
                       <div className="flex items-center gap-2.5 pt-2">
-                        <input type="checkbox" id={`rev-${book.id}`} checked={book.includeInRevision} onChange={e => updateBook(book.id, { includeInRevision: e.target.checked })} className="rounded text-[#5A5A40] focus:ring-[#5A5A40]" />
+                        <input type="checkbox" id={`rev-${book.id}`} checked={book.includeInRevision} onChange={e => updateBook(book.id, { includeInRevision: e.target.checked })} className="rounded text-[#18407B] focus:ring-[#6197EC]" />
                         <label htmlFor={`rev-${book.id}`} className="text-sm dark:text-zinc-300 cursor-pointer">Include in Revision Cycle?</label>
                       </div>
                     </div>
 
                     {/* Planning Mode */}
-                    <div className="space-y-4 bg-[#F5F5F0]/50 dark:bg-zinc-800/30 p-5 rounded-xl border border-[#E5E5E0] dark:border-zinc-700/50">
+                    <div className="space-y-4 bg-[#F5F5F7]/50 dark:bg-zinc-800/30 p-5 rounded-xl border border-[#E5E7EB] dark:border-zinc-700/50">
                       <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-2">Planning Mode</label>
                       <select 
-                        className="w-full p-2.5 border border-[#E5E5E0] dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-900 text-sm dark:text-white"
+                        className="w-full p-2.5 border border-[#E5E7EB] dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-900 text-sm dark:text-white"
                         value={book.mode}
                         onChange={e => updateBook(book.id, { mode: e.target.value as PlanMode })}
                       >
@@ -222,49 +222,49 @@ export default function StudyPlanner() {
                       {book.mode === 'fixed-pace' && (
                         <div className="pt-2">
                           <label className="block text-xs text-zinc-500 mb-1">Fixed Pages / Day</label>
-                          <input type="number" className="border border-[#E5E5E0] dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2.5 rounded-lg w-full text-sm dark:text-white" value={book.fixedPagesPerDay || ''} onChange={e => updateBook(book.id, { fixedPagesPerDay: parseInt(e.target.value) || 1 })} />
-                          <div className="mt-3 text-xs text-[#5A5A40] dark:text-[#8E8E70] bg-[#5A5A40]/10 dark:bg-[#5A5A40]/20 p-2.5 rounded-lg border border-[#5A5A40]/20">Auto-calculated end: <b className="ml-1">{stats.projectedEnd}</b></div>
+                          <input type="number" className="border border-[#E5E7EB] dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2.5 rounded-lg w-full text-sm dark:text-white" value={book.fixedPagesPerDay || ''} onChange={e => updateBook(book.id, { fixedPagesPerDay: parseInt(e.target.value) || 1 })} />
+                          <div className="mt-3 text-xs text-[#18407B] dark:text-[#A69DF4] bg-[#6197EC]/10 dark:bg-[#6197EC]/20 p-2.5 rounded-lg border border-[#6197EC]/20">Auto-calculated end: <b className="ml-1">{stats.projectedEnd}</b></div>
                         </div>
                       )}
                       
                       {book.mode === 'fixed-deadline' && (
                         <div className="pt-2">
                           <label className="block text-xs text-zinc-500 mb-1">Target End Date</label>
-                          <input type="date" className="border border-[#E5E5E0] dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2.5 rounded-lg w-full text-sm dark:text-white" value={book.targetEndDate || ''} onChange={e => updateBook(book.id, { targetEndDate: e.target.value })} />
-                          <div className="mt-3 text-xs text-[#5A5A40] dark:text-[#8E8E70] bg-[#5A5A40]/10 dark:bg-[#5A5A40]/20 p-2.5 rounded-lg border border-[#5A5A40]/20">Auto-calculated pace: <b className="ml-1">{stats.requiredPace} pgs/day</b></div>
+                          <input type="date" className="border border-[#E5E7EB] dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2.5 rounded-lg w-full text-sm dark:text-white" value={book.targetEndDate || ''} onChange={e => updateBook(book.id, { targetEndDate: e.target.value })} />
+                          <div className="mt-3 text-xs text-[#18407B] dark:text-[#A69DF4] bg-[#6197EC]/10 dark:bg-[#6197EC]/20 p-2.5 rounded-lg border border-[#6197EC]/20">Auto-calculated pace: <b className="ml-1">{stats.requiredPace} pgs/day</b></div>
                         </div>
                       )}
                       
                       {book.mode === 'phased' && (
-                        <div className="text-sm text-zinc-500 dark:text-zinc-400 italic p-4 bg-white dark:bg-zinc-900 border border-dashed border-[#E5E5E0] dark:border-zinc-700 rounded-lg mt-2">
+                        <div className="text-sm text-zinc-500 dark:text-zinc-400 italic p-4 bg-white dark:bg-zinc-900 border border-dashed border-[#E5E7EB] dark:border-zinc-700 rounded-lg mt-2">
                           Phases configurator UI (Phase 1: X pages/day from Y to Z...)
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <hr className="border-[#E5E5E0] dark:border-zinc-800" />
+                  <hr className="border-[#E5E7EB] dark:border-zinc-800" />
                   
                   {/* Progress Input & Display */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#F5F5F0]/80 dark:bg-zinc-800/40 p-5 rounded-xl">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#F5F5F7]/80 dark:bg-zinc-800/40 p-5 rounded-xl">
                     <div className="flex flex-col justify-center">
                       <h4 className="font-bold text-sm mb-3 dark:text-white">Daily Progress Input</h4>
                       <div className="flex gap-2">
-                        <input type="number" placeholder="Enter current page..." className="border border-[#E5E5E0] dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2.5 rounded-lg flex-1 text-sm dark:text-white" id={`inp-cur-${book.id}`} defaultValue={book.currentPageNumber || ''} />
-                        <button className="bg-[#5A5A40] text-white hover:bg-[#6A6A4E] transition-colors px-4 py-2.5 rounded-lg text-sm font-medium" onClick={() => {
+                        <input type="number" placeholder="Enter current page..." className="border border-[#E5E7EB] dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2.5 rounded-lg flex-1 text-sm dark:text-white" id={`inp-cur-${book.id}`} defaultValue={book.currentPageNumber || ''} />
+                        <button className="bg-[#6197EC] text-white hover:bg-[#7567EE] transition-colors px-4 py-2.5 rounded-lg text-sm font-medium" onClick={() => {
                           const val = (document.getElementById(`inp-cur-${book.id}`) as HTMLInputElement).value;
                           if (val) updateBook(book.id, { currentPageNumber: parseInt(val) || 0 });
                         }}>Update</button>
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-4 text-sm bg-white dark:bg-zinc-900 p-4 rounded-xl border border-[#E5E5E0] dark:border-zinc-800 shadow-sm">
+                    <div className="grid grid-cols-2 gap-4 text-sm bg-white dark:bg-zinc-900 p-4 rounded-xl border border-[#E5E7EB] dark:border-zinc-800 shadow-sm">
                       <div><div className="text-zinc-500 text-xs mb-1">Current Page</div><div className="font-bold text-lg dark:text-white">{book.currentPageNumber}</div></div>
                       <div><div className="text-zinc-500 text-xs mb-1">Remaining</div><div className="font-bold text-lg dark:text-white">{stats.remaining}</div></div>
                       <div className="col-span-2 mt-1">
                         <div className="flex justify-between text-xs mb-2 dark:text-zinc-400 font-medium"><span>{pct}% Progress</span><span>{book.totalPages} pages</span></div>
-                        <div className="w-full bg-[#E5E5E0] dark:bg-zinc-800 rounded-full h-2.5 overflow-hidden">
-                          <div className="bg-[#5A5A40] dark:bg-[#8E8E70] h-2.5 rounded-full transition-all duration-500" style={{ width: `${pct}%` }}></div>
+                        <div className="w-full bg-[#E5E7EB] dark:bg-zinc-800 rounded-full h-2.5 overflow-hidden">
+                          <div className="bg-[#6197EC] dark:bg-[#A69DF4] h-2.5 rounded-full transition-all duration-500" style={{ width: `${pct}%` }}></div>
                         </div>
                       </div>
                     </div>

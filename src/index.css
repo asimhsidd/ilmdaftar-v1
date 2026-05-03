@@ -1,10 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Scheherazade+New:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
+
+.montserrat-uniquifier {
+  font-family: "Montserrat", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 500;
+  font-style: normal;
+}
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 .aref-ruqaa-regular {
-  font-family: "Aref Ruqaa", serif;
-  font-weight: 400;
+  font-family: "Montserrat", "Aref Ruqaa", serif;
+  font-optical-sizing: auto;
+  font-weight: 500;
   font-style: normal;
 }
 
@@ -18,4 +29,212 @@
   font-family: "Scheherazade New", serif;
   font-weight: 600;
   font-style: normal;
+}
+
+/* Montserrat Font Classes */
+.montserrat-thin {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 100;
+  font-style: normal;
+}
+
+.montserrat-extralight {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 200;
+  font-style: normal;
+}
+
+.montserrat-light {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 300;
+  font-style: normal;
+}
+
+.montserrat-regular {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.montserrat-medium {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 500;
+  font-style: normal;
+}
+
+.montserrat-semibold {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 600;
+  font-style: normal;
+}
+
+.montserrat-bold {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+  font-style: normal;
+}
+
+.montserrat-extrabold {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 800;
+  font-style: normal;
+}
+
+.montserrat-black {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 900;
+  font-style: normal;
+}
+
+.montserrat-thin-italic {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 100;
+  font-style: italic;
+}
+
+.montserrat-extralight-italic {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 200;
+  font-style: italic;
+}
+
+.montserrat-light-italic {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 300;
+  font-style: italic;
+}
+
+.montserrat-regular-italic {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 400;
+  font-style: italic;
+}
+
+.montserrat-medium-italic {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 500;
+  font-style: italic;
+}
+
+.montserrat-semibold-italic {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 600;
+  font-style: italic;
+}
+
+.montserrat-bold-italic {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+  font-style: italic;
+}
+
+.montserrat-extrabold-italic {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 800;
+  font-style: italic;
+}
+
+.montserrat-black-italic {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 900;
+  font-style: italic;
+}
+
+:root[data-color-theme="olive"] {
+  --brand-accent: #6197EC;
+  --app-bg: #F5F5F7;
+}
+
+:root[data-color-theme="blue"] {
+  --brand-accent: #2F6D9B;
+  --app-bg: #EEF5FB;
+}
+
+:root[data-color-theme="light-orange"] {
+  --brand-accent: #C97A3D;
+  --app-bg: #FFF4EB;
+}
+
+:root[data-color-theme="turquoise"] {
+  --brand-accent: #2B8C8C;
+  --app-bg: #EAF8F7;
+}
+
+:root[data-text-scale="compact"] {
+  font-size: 14px;
+}
+
+:root[data-text-scale="comfortable"] {
+  font-size: 16px;
+}
+
+:root[data-text-scale="large"] {
+  font-size: 18px;
+}
+
+body {
+  font-family: "Montserrat", "Public Sans", sans-serif;
+  background: var(--app-bg, #F5F5F7);
+}
+
+:root.dark {
+  --app-bg: #000000;
+}
+
+:root[data-title-font="aref"] h1,
+:root[data-title-font="aref"] h2,
+:root[data-title-font="aref"] h3,
+:root[data-title-font="aref"] h4,
+:root[data-title-font="aref"] .title-font {
+  font-family: "Montserrat", "Aref Ruqaa", serif;
+}
+
+:root[data-title-font="scheherazade"] h1,
+:root[data-title-font="scheherazade"] h2,
+:root[data-title-font="scheherazade"] h3,
+:root[data-title-font="scheherazade"] h4,
+:root[data-title-font="scheherazade"] .title-font {
+  font-family: "Scheherazade New", serif;
+}
+
+:root[data-body-font="aref"] [dir="rtl"],
+:root[data-body-font="aref"] .body-font {
+  font-family: "Montserrat", "Aref Ruqaa", serif;
+}
+
+:root[data-body-font="scheherazade"] [dir="rtl"],
+:root[data-body-font="scheherazade"] .body-font {
+  font-family: "Scheherazade New", serif;
+}
+
+:root[data-title-font="noto-naskh"] h1,
+:root[data-title-font="noto-naskh"] h2,
+:root[data-title-font="noto-naskh"] h3,
+:root[data-title-font="noto-naskh"] h4,
+:root[data-title-font="noto-naskh"] .title-font {
+  font-family: "Montserrat", "Noto Naskh Arabic", serif;
+}
+
+:root[data-body-font="noto-naskh"] [dir="rtl"],
+:root[data-body-font="noto-naskh"] .body-font {
+  font-family: "Montserrat", "Noto Naskh Arabic", serif;
+}
+
+/* Mobile safe area support */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Smooth touch scrolling on mobile */
+@media (max-width: 767px) {
+  main {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Prevent horizontal overflow on mobile */
+  body {
+    overflow-x: hidden;
+  }
 }

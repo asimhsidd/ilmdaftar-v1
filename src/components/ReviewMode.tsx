@@ -120,15 +120,15 @@ export default function ReviewMode({ sciences }: { sciences: Science[] }) {
         </div>
         <button 
           onClick={fetchFawaid}
-          className="p-3 bg-white dark:bg-zinc-800 border border-[#E5E5E0] dark:border-zinc-700 rounded-2xl hover:bg-[#F5F5F0] dark:hover:bg-zinc-700 transition-all"
+          className="p-3 bg-white dark:bg-zinc-800 border border-[#E5E7EB] dark:border-zinc-700 rounded-2xl hover:bg-[#F5F5F7] dark:hover:bg-zinc-700 transition-all"
           title={t('Reload Shuffle')}
         >
-          <RefreshCw className={`w-5 h-5 text-[#5A5A40] dark:text-zinc-300 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-5 h-5 text-[#18407B] dark:text-zinc-300 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </header>
 
       {/* Filters */}
-      <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-[#E5E5E0] dark:border-zinc-800 shadow-sm space-y-4">
+      <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-[#E5E7EB] dark:border-zinc-800 shadow-sm space-y-4">
         <div className="flex items-center gap-2 text-sm font-bold text-[#8E8E8E] dark:text-gray-500 uppercase tracking-wider mb-2">
           <Filter className="w-4 h-4" /> {t('Filters')}
         </div>
@@ -136,7 +136,7 @@ export default function ReviewMode({ sciences }: { sciences: Science[] }) {
           <select 
             value={filters.scienceId}
             onChange={e => setFilters({...filters, scienceId: e.target.value, bookId: ''})}
-            className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+            className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
           >
             <option value="">{t('All Sciences')}</option>
             {sciences?.map(s => (
@@ -147,7 +147,7 @@ export default function ReviewMode({ sciences }: { sciences: Science[] }) {
           <select 
             value={filters.bookId}
             onChange={e => setFilters({...filters, bookId: e.target.value})}
-            className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+            className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
             disabled={!filters.scienceId}
           >
             <option value="">{t('All Books')}</option>
@@ -161,7 +161,7 @@ export default function ReviewMode({ sciences }: { sciences: Science[] }) {
             placeholder={t('Author')}
             value={filters.author}
             onChange={e => setFilters({...filters, author: e.target.value})}
-            className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+            className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
           />
 
           <input 
@@ -169,12 +169,12 @@ export default function ReviewMode({ sciences }: { sciences: Science[] }) {
             placeholder={t('Tag')}
             value={filters.tag}
             onChange={e => setFilters({...filters, tag: e.target.value})}
-            className="w-full bg-[#F5F5F0] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#5A5A40] dark:focus:ring-zinc-600"
+            className="w-full bg-[#F5F5F7] dark:bg-zinc-800 dark:text-white border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#6197EC] dark:focus:ring-zinc-600"
           />
 
           <button 
             onClick={fetchFawaid}
-            className="w-full py-3 bg-[#5A5A40] dark:bg-zinc-700 text-white rounded-xl text-sm font-bold hover:bg-[#4A4A30] dark:hover:bg-zinc-600 transition-all flex items-center justify-center h-full"
+            className="w-full py-3 bg-[#6197EC] dark:bg-zinc-700 text-white rounded-xl text-sm font-bold hover:bg-[#4C81D9] dark:hover:bg-zinc-600 transition-all flex items-center justify-center h-full"
           >
             {t('Apply Filters')}
           </button>
@@ -183,14 +183,14 @@ export default function ReviewMode({ sciences }: { sciences: Science[] }) {
 
       {loading ? (
         <div className="flex justify-center py-20">
-          <Loader2 className="w-10 h-10 text-[#5A5A40] dark:text-zinc-400 animate-spin" />
+          <Loader2 className="w-10 h-10 text-[#18407B] dark:text-zinc-400 animate-spin" />
         </div>
       ) : currentNote ? (
         <div className="max-w-2xl mx-auto">
-          <div className="bg-white dark:bg-zinc-900 rounded-[40px] p-12 border border-[#E5E5E0] dark:border-zinc-800 shadow-xl shadow-[#5A5A40]/5 dark:shadow-none relative overflow-hidden min-h-[400px] flex flex-col">
-            <div className="absolute top-0 left-0 w-full h-2 bg-[#5A5A40]/10 dark:bg-zinc-800">
+          <div className="bg-white dark:bg-zinc-900 rounded-[40px] p-12 border border-[#E5E7EB] dark:border-zinc-800 shadow-xl shadow-[#6197EC]/5 dark:shadow-none relative overflow-hidden min-h-[400px] flex flex-col">
+            <div className="absolute top-0 left-0 w-full h-2 bg-[#6197EC]/10 dark:bg-zinc-800">
               <motion.div 
-                className="h-full bg-[#5A5A40] dark:bg-zinc-500"
+                className="h-full bg-[#6197EC] dark:bg-zinc-500"
                 initial={{ width: 0 }}
                 animate={{ width: `${((currentIndex + 1) / fawaid.length) * 100}%` }}
               />
@@ -212,7 +212,7 @@ export default function ReviewMode({ sciences }: { sciences: Science[] }) {
                     onClick={() => setShowContent(true)}
                     className="group flex flex-col items-center gap-4 mt-8"
                   >
-                    <div className="p-6 bg-[#F5F5F0] dark:bg-zinc-800 rounded-full group-hover:bg-[#5A5A40] dark:group-hover:bg-zinc-700 group-hover:text-white transition-all shadow-sm">
+                    <div className="p-6 bg-[#F5F5F7] dark:bg-zinc-800 rounded-full group-hover:bg-[#6197EC] dark:group-hover:bg-zinc-700 group-hover:text-white transition-all shadow-sm">
                       <Eye className="w-8 h-8 dark:text-white" />
                     </div>
                     <span className="text-xs font-bold uppercase tracking-widest text-[#8E8E8E] dark:text-gray-500">{t('Reveal Answer')}</span>
@@ -224,14 +224,14 @@ export default function ReviewMode({ sciences }: { sciences: Science[] }) {
                     animate={{ opacity: 1, y: 0 }}
                     className="space-y-8 w-full"
                   >
-                    <div className="w-full h-px bg-[#E5E5E0] dark:bg-zinc-800" />
+                    <div className="w-full h-px bg-[#E5E7EB] dark:bg-zinc-800" />
                     
                     <p className="text-xl scheherazade-new-regular leading-relaxed text-[#4A4A4A] dark:text-gray-300 text-right whitespace-pre-wrap" dir="rtl">
                       {currentNote.content}
                     </p>
                     
-                    <div className="bg-[#F5F5F0] dark:bg-zinc-800 rounded-2xl p-6 text-center">
-                      <p className="font-serif font-bold text-[#5A5A40] dark:text-zinc-300 text-lg">
+                    <div className="bg-[#F5F5F7] dark:bg-zinc-800 rounded-2xl p-6 text-center">
+                      <p className="font-serif font-bold text-[#18407B] dark:text-zinc-300 text-lg">
                         {currentNote.book_title}
                       </p>
                       {currentNote.sharh_title && (
@@ -246,7 +246,7 @@ export default function ReviewMode({ sciences }: { sciences: Science[] }) {
 
                     <div className="flex flex-wrap justify-center gap-2">
                       {currentNote.tags?.map((tag, i) => (
-                        <span key={i} className="text-xs font-bold text-[#5A5A40] dark:text-zinc-300 bg-[#5A5A40]/10 dark:bg-zinc-800 px-3 py-1 rounded-full">
+                        <span key={i} className="text-xs font-bold text-[#18407B] dark:text-zinc-300 bg-[#6197EC]/10 dark:bg-zinc-800 px-3 py-1 rounded-full">
                           #{tag}
                         </span>
                       ))}
@@ -278,37 +278,37 @@ export default function ReviewMode({ sciences }: { sciences: Science[] }) {
               </div>
             )}
 
-            <div className="mt-12 pt-8 border-t border-[#F5F5F0] dark:border-zinc-800 flex justify-between items-center">
+            <div className="mt-12 pt-8 border-t border-[#F5F5F7] dark:border-zinc-800 flex justify-between items-center">
               <span className="text-xs font-bold text-[#8E8E8E] dark:text-gray-500">{t('Card')} {currentIndex + 1} {t('of')} {fawaid.length}</span>
             </div>
           </div>
         </div>
       ) : (
-        <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-[#E5E5E0] dark:border-zinc-800 border-dashed">
+        <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-[#E5E7EB] dark:border-zinc-800 border-dashed">
           <p className="text-[#8E8E8E] dark:text-gray-500">{t('No notes found')}</p>
         </div>
       )}
 
       {showContent && (relatedFawaid.length > 0 || loadingRelated) && (
-        <div className="mt-16 border-t border-[#E5E5E0] dark:border-zinc-800 pt-16">
+        <div className="mt-16 border-t border-[#E5E7EB] dark:border-zinc-800 pt-16">
           <h3 className="text-2xl font-serif font-bold text-[#1A1A1A] dark:text-white mb-6">
             {t('Related Fawaid')}
           </h3>
           {loadingRelated ? (
             <div className="flex justify-center py-8">
-              <Loader2 className="w-8 h-8 text-[#5A5A40] dark:text-zinc-400 animate-spin" />
+              <Loader2 className="w-8 h-8 text-[#18407B] dark:text-zinc-400 animate-spin" />
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {relatedFawaid.map(note => (
-                <div key={note.id} className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-[#E5E5E0] dark:border-zinc-800 shadow-sm">
+                <div key={note.id} className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-[#E5E7EB] dark:border-zinc-800 shadow-sm">
                   <h4 className="font-serif font-bold text-lg mb-2 text-[#1A1A1A] dark:text-white line-clamp-2">
                     {note.title || t('Untitled')}
                   </h4>
                   <p className="text-[#8E8E8E] dark:text-gray-400 text-sm line-clamp-3 mb-4">
                     {note.content}
                   </p>
-                  <div className="text-xs font-bold text-[#5A5A40] dark:text-zinc-500">
+                  <div className="text-xs font-bold text-[#18407B] dark:text-zinc-500">
                     {note.book_title}
                   </div>
                 </div>
