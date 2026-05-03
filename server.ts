@@ -175,7 +175,15 @@ class Database {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database("knowledge.db");
+const DATA_DIR = process.env.DATABASE_PATH ? path.dirname(process.env.DATABASE_PATH) : __dirname;
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, 'knowledge.db');
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+const db = new Database(DB_PATH);
 db.pragma('foreign_keys = ON');
 
 // Initialize Database
@@ -713,7 +721,7 @@ const oauth2Client = new google.auth.OAuth2(
 
 let driveTokens: any = null;
 try {
-  const tokenData = fs.readFileSync(path.join(__dirname, 'drive_tokens.json'), 'utf-8');
+  const tokenData = fs.readFileSync(path.join(DATA_DIR, 'drive_tokens.json'), 'utf-8');
   driveTokens = JSON.parse(tokenData);
   oauth2Client.setCredentials(driveTokens);
 } catch (e) {
@@ -2513,7 +2521,7 @@ async function startServer() {
       const { tokens } = await oauth2Client.getToken(code as string);
       oauth2Client.setCredentials(tokens);
       driveTokens = tokens;
-      fs.writeFileSync(path.join(__dirname, 'drive_tokens.json'), JSON.stringify(tokens));
+      fs.writeFileSync(path.join(DATA_DIR, 'drive_tokens.json'), JSON.stringify(tokens));
       res.send('<html><body><script>window.close();</script><p>Connected! You may close this tab.</p></body></html>');
     } catch (e) {
       res.status(400).send('Authentication failed');
@@ -2528,14 +2536,13 @@ async function startServer() {
     if (!driveTokens) return res.status(401).json({ error: "Not authenticated with Google Drive" });
     try {
       const drive = google.drive({ version: 'v3', auth: oauth2Client });
-      const dbPath = path.join(__dirname, 'knowledge.db');
 
       const listRes = await drive.files.list({
         q: "name='knowledge.db' and trashed=false",
         fields: 'files(id, name)'
       });
 
-      const media = { mimeType: 'application/x-sqlite3', body: fs.createReadStream(dbPath) };
+      const media = { mimeType: 'application/x-sqlite3', body: fs.createReadStream(DB_PATH) };
 
       if (listRes.data.files && listRes.data.files.length > 0) {
         await drive.files.update({
@@ -2762,17 +2769,16 @@ async function startServer() {
       }
 
       const fileId = listRes.data.files[0].id!;
-      const dbPath = path.join(__dirname, 'knowledge.db');
-      const backupPath = path.join(__dirname, 'knowledge.db.backup');
+      const backupPath = DB_PATH + '.backup';
 
-      fs.copyFileSync(dbPath, backupPath);
+      fs.copyFileSync(DB_PATH, backupPath);
 
       const response = await drive.files.get(
         { fileId, alt: 'media' },
         { responseType: 'stream' }
       );
 
-      const dest = fs.createWriteStream(dbPath);
+      const dest = fs.createWriteStream(DB_PATH);
       await new Promise((resolve, reject) => {
         (response.data as any).pipe(dest)
           .on('finish', resolve)

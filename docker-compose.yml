@@ -1,0 +1,19 @@
+services:
+  ilmdaftar:
+    build: .
+    container_name: ilmdaftar-v1
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/data/knowledge.db
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - APP_URL=${APP_URL}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    volumes:
+      - ilmdaftar-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  ilmdaftar-data:
